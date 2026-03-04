@@ -5,8 +5,36 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Control Dashboard</title>
   <style>
-    :root { --bg:#f8fafc; --card:#fff; --line:#e2e8f0; --text:#0f172a; --muted:#64748b; }
-    body.dark { --bg:#0b1020; --card:#121936; --line:#2a3668; --text:#e8ecff; --muted:#a7b0d6; }
+    :root {
+      --bg:#f4f7ff;
+      --card:#ffffff;
+      --line:#d9e2f7;
+      --text:#0f172a;
+      --muted:#64748b;
+      --accent:#315ec2;
+      --accent-2:#7c3aed;
+      --card-a:#eef4ff;
+      --card-b:#f3efff;
+      --card-c:#ecfeff;
+      --agent-aran:#0ea5e9;
+      --agent-david:#84cc16;
+      --agent-kai:#f97316;
+    }
+    body.dark {
+      --bg:#0b1020;
+      --card:#121936;
+      --line:#2a3668;
+      --text:#e8ecff;
+      --muted:#a7b0d6;
+      --accent:#6ea8ff;
+      --accent-2:#a78bfa;
+      --card-a:#162243;
+      --card-b:#211a43;
+      --card-c:#153042;
+      --agent-aran:#38bdf8;
+      --agent-david:#a3e635;
+      --agent-kai:#fb923c;
+    }
     * { box-sizing:border-box; }
     html, body { height:100%; }
     body { margin:0; font-family:Inter,system-ui,Arial,sans-serif; color:var(--text); background:var(--bg); overflow:hidden; }
@@ -16,10 +44,13 @@
     .left { background:var(--card); border-right:1px solid var(--line); padding:14px; overflow:auto; }
     .main { padding:16px; overflow:auto; min-width:0; }
     .right { border-left:1px solid var(--line); background:var(--card); padding:12px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
-    .navbtn { width:100%; text-align:left; border:1px solid transparent; background:transparent; padding:10px 12px; border-radius:10px; margin-bottom:6px; cursor:pointer; }
-    .navbtn.active { background:#dbeafe; color:#1e3a8a; border-color:#bfdbfe; font-weight:600; }
+    .navbtn { width:100%; text-align:left; border:1px solid transparent; background:transparent; padding:10px 12px; border-radius:10px; margin-bottom:6px; cursor:pointer; display:flex; align-items:center; gap:8px; }
+    .navbtn.active { background:color-mix(in oklab, var(--accent) 15%, var(--card)); color:var(--accent); border-color:color-mix(in oklab, var(--accent) 35%, var(--line)); font-weight:600; }
     .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; box-shadow:0 6px 18px rgba(15,23,42,.06); }
+    .cards .card:nth-child(1){ background:linear-gradient(135deg,var(--card-a),var(--card)); }
+    .cards .card:nth-child(2){ background:linear-gradient(135deg,var(--card-b),var(--card)); }
+    .cards .card:nth-child(3){ background:linear-gradient(135deg,var(--card-c),var(--card)); }
     .k { font-size:12px; color:var(--muted); text-transform:uppercase; }
     .v { font-size:30px; font-weight:700; margin-top:6px; }
     .panel { margin-top:12px; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:auto; }
@@ -32,6 +63,7 @@
     .toolbar { display:flex; gap:8px; padding:10px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
     input,select,button { border:1px solid var(--line); border-radius:8px; padding:8px; font-size:13px; background:var(--card); color:var(--text); }
     button { cursor:pointer; }
+    #themeToggle { width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--accent); }
     .danger { background:#fee2e2; border-color:#fecaca; color:#991b1b; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th, td { border-bottom:1px solid #f1f5f9; padding:9px 10px; text-align:left; }
@@ -41,25 +73,32 @@
     .approvalbox { border:1px solid var(--line); border-radius:10px; background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); padding:8px; margin-bottom:10px; max-height:32%; overflow:auto; }
     .approvalrow { border:1px solid #dbeafe; background:#eff6ff; border-radius:8px; padding:8px; margin-bottom:8px; }
     .approvalrow .meta { color:#1d4ed8; font-size:11px; margin-bottom:6px; }
-    .feed { border:1px solid var(--line); border-radius:10px; background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); padding:8px; flex:1; min-height:220px; overflow:auto; }
+    .feed { border:1px solid #111827; border-radius:10px; background:#0b1220; color:#d1fae5; padding:8px; flex:1; min-height:220px; overflow:auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
     .hscroll { overflow-x:auto; }
-    .msg { border-radius:10px; padding:8px 10px; margin-bottom:8px; border:1px solid transparent; }
+    .msg { border-radius:8px; padding:8px 10px; margin-bottom:8px; border:1px solid #1f2937; background:#0f172a; }
     .meta { font-size:11px; margin-bottom:4px; display:flex; align-items:center; gap:6px; }
     .icon { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; }
-    .system { background:#eef2ff; border-color:#c7d2fe; }
-    .system .meta { color:#4338ca; } .system .icon { background:#c7d2fe; }
-    .aran { background:#e0f2fe; border-color:#bae6fd; }
-    .aran .meta { color:#0369a1; } .aran .icon { background:#7dd3fc; }
-    .david { background:#ecfccb; border-color:#d9f99d; }
-    .david .meta { color:#3f6212; } .david .icon { background:#bef264; }
-    .kai { background:#ffedd5; border-color:#fed7aa; }
-    .kai .meta { color:#9a3412; } .kai .icon { background:#fdba74; }
-    .error { background:#fee2e2; border-color:#fecaca; }
-    .error .meta { color:#991b1b; } .error .icon { background:#fca5a5; }
+    .system { border-left:3px solid #a78bfa; }
+    .system .meta { color:#c4b5fd; } .system .icon { background:#4c1d95; color:#e9d5ff; }
+    .aran { border-left:3px solid var(--agent-aran); }
+    .aran .meta { color:#7dd3fc; } .aran .icon { background:#0c4a6e; color:#bae6fd; }
+    .david { border-left:3px solid var(--agent-david); }
+    .david .meta { color:#d9f99d; } .david .icon { background:#365314; color:#ecfccb; }
+    .kai { border-left:3px solid var(--agent-kai); }
+    .kai .meta { color:#fdba74; } .kai .icon { background:#7c2d12; color:#ffedd5; }
+    .error { border-left:3px solid #f87171; }
+    .error .meta { color:#fca5a5; } .error .icon { background:#7f1d1d; color:#fee2e2; }
 
     .agent-box { margin-top:12px; border:1px solid var(--line); border-radius:10px; padding:8px; background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); }
     .agent-row { display:flex; justify-content:space-between; align-items:center; padding:7px 8px; border:1px solid var(--line); border-radius:8px; margin-bottom:6px; background:var(--card); font-size:12px; }
-    .status-pill { border:1px solid var(--line); border-radius:999px; padding:2px 8px; font-size:11px; }
+    .status-pill { border:1px solid var(--line); border-radius:999px; padding:2px 8px; font-size:11px; background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); }
+    .status-pill.aran { background:color-mix(in oklab, var(--agent-aran) 20%, var(--card)); color:var(--agent-aran); }
+    .status-pill.david { background:color-mix(in oklab, var(--agent-david) 20%, var(--card)); color:#365314; }
+    .status-pill.kai { background:color-mix(in oklab, var(--agent-kai) 20%, var(--card)); color:#9a3412; }
+    .avatar { width:22px; height:22px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:700; margin-right:7px; }
+    .avatar.aran { background:var(--agent-aran); }
+    .avatar.david { background:var(--agent-david); color:#1f2937; }
+    .avatar.kai { background:var(--agent-kai); }
 
     @media (max-width: 1200px) {
       .wrap { grid-template-columns:180px minmax(0,1fr); }
@@ -80,17 +119,17 @@
       <div class="sub">Synced with dev.db</div>
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
-      <button id="themeToggle" title="Toggle theme">🌙</button>
+      <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme"></button>
       <div class="sub" id="updated">Updated —</div>
     </div>
   </header>
 
   <div class="wrap">
     <aside class="left">
-      <button class="navbtn active" data-tab="overview">Overview</button>
-      <button class="navbtn" data-tab="categories">Categories</button>
-      <button class="navbtn" data-tab="projects">Projects</button>
-      <button class="navbtn" data-tab="tasks">Tasks</button>
+      <button class="navbtn active" data-tab="overview"><span>▣</span>Overview</button>
+      <button class="navbtn" data-tab="categories"><span>◫</span>Categories</button>
+      <button class="navbtn" data-tab="projects"><span>◧</span>Projects</button>
+      <button class="navbtn" data-tab="tasks"><span>☰</span>Tasks</button>
 
       <div class="agent-box">
         <div class="sub" style="margin-bottom:8px; font-weight:600">Agents Status</div>
@@ -158,6 +197,7 @@
     </main>
 
     <aside class="right">
+      <!-- Right rail: user approvals + terminal-style live system feed -->
       <h3 style="margin:4px 0 10px">Approvals (User-connected)</h3>
       <div class="approvalbox" id="approvalBox"></div>
       <h3 style="margin:4px 0 10px">Activity Chat (System Logs)</h3>
@@ -169,6 +209,7 @@
 const state = { categories:[], projects:[], tasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false };
 const selected = { categories:new Set(), projects:new Set(), tasks:new Set() };
 const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+// Core workflow columns used across the drag/drop Kanban
 const KANBAN_COLS = ['plan','in_progress','review','approval_required','completed','blocked'];
 const KANBAN_LABEL = { plan:'Plan', in_progress:'In Progress', review:'Review', approval_required:'Approval Required', completed:'Completed', blocked:'Blocked' };
 
@@ -272,6 +313,18 @@ function detectRealtimeTaskEvents(){
   state.prevTasks = state.tasks.map(t => ({id:t.id, status:t.status, assignee:t.assignee, title:t.title}));
 }
 
+function assigneeBadge(name){
+  const n = String(name||'Unassigned');
+  const cls = n==='Aran' ? 'aran' : n==='David' ? 'david' : n==='Kai' ? 'kai' : 'system';
+  return `<span class="status-pill ${cls}" style="border-color:${cls==='aran'?'var(--agent-aran)':cls==='david'?'var(--agent-david)':cls==='kai'?'var(--agent-kai)':'var(--line)'}">${esc(n)}</span>`;
+}
+
+function renderTasksTable(rows){
+  if(!rows.length){ tasks.innerHTML = '<p class="muted" style="padding:10px">No data</p>'; return; }
+  const cols = Object.keys(rows[0]);
+  tasks.innerHTML = `<table><thead><tr><th><input type="checkbox" data-all="tasks"></th>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr><td><input type="checkbox" data-row="tasks" value="${r.id}" ${selected.tasks.has(r.id)?'checked':''}></td>${cols.map(c=>`<td>${c==='assignee'?assigneeBadge(r[c]):esc(r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
 function renderKanban(){
   const grouped = Object.fromEntries(KANBAN_COLS.map(s => [s, []]));
   state.tasks.forEach(t => {
@@ -284,7 +337,7 @@ function renderKanban(){
       ${grouped[s].map(t => `
         <div class="cardtask" draggable="true" data-task-id="${t.id}">
           <div><b>${esc(t.title || ('Task #'+t.id))}</b></div>
-          <div class="muted">${esc(t.project_name || '-')} • ${esc(t.assignee || 'Unassigned')}</div>
+          <div class="muted">${esc(t.project_name || '-')} • ${assigneeBadge(t.assignee)}</div>
         </div>
       `).join('')}
     </div>
@@ -322,7 +375,9 @@ function renderAgentsStatus(){
     const review = list.filter(t => (t.status||'').toLowerCase()==='review').length;
     const pending = list.filter(t => (t.status||'').toLowerCase()==='approval_required').length;
     const status = inProgress > 0 ? 'working' : (review > 0 || pending > 0 ? 'active' : 'idle');
-    return `<div class="agent-row"><span>${n}</span><span class="status-pill">${status}${inProgress?` · ${inProgress} running`:''}</span></div>`;
+    const cls = n==='Aran' ? 'aran' : n==='David' ? 'david' : 'kai';
+    const initials = n.slice(0,1);
+    return `<div class="agent-row"><span style="display:flex;align-items:center"><span class="avatar ${cls}">${initials}</span>${n}</span><span class="status-pill ${cls}">${status}${inProgress?` · ${inProgress} running`:''}</span></div>`;
   }).join('');
   agentsStatus.innerHTML = html;
 }
@@ -363,7 +418,7 @@ function render(){
     const okAssignee = !taskAssigneeVal || String(t.assignee||'') === taskAssigneeVal;
     return okText && okStatus && okAssignee;
   });
-  renderTable(tasks, filteredTasks, 'tasks');
+  renderTasksTable(filteredTasks);
 
   renderKanban();
   renderApprovals();
@@ -433,15 +488,17 @@ document.querySelectorAll('.navbtn').forEach(btn => btn.onclick = () => {
   ['overview','categories','projects','tasks'].forEach(id => document.getElementById('tab-'+id).style.display = (id===btn.dataset.tab ? '' : 'none'));
 });
 
+const moonIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
+const sunIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M2 12h2M20 12h2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M19.1 4.9l-1.4 1.4M6.3 17.7l-1.4 1.4"/></svg>';
 const savedTheme = localStorage.getItem('cd_theme') || 'light';
 if(savedTheme === 'dark') document.body.classList.add('dark');
 const themeBtn = document.getElementById('themeToggle');
 if(themeBtn){
-  themeBtn.textContent = document.body.classList.contains('dark') ? '☀️' : '🌙';
+  themeBtn.innerHTML = document.body.classList.contains('dark') ? sunIcon : moonIcon;
   themeBtn.addEventListener('click', () => {
     document.body.classList.toggle('dark');
     const dark = document.body.classList.contains('dark');
-    themeBtn.textContent = dark ? '☀️' : '🌙';
+    themeBtn.innerHTML = dark ? sunIcon : moonIcon;
     localStorage.setItem('cd_theme', dark ? 'dark' : 'light');
   });
 }
