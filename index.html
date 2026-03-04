@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Control Dashboard</title>
+  <style>
+    :root { --bg:#f8fafc; --card:#fff; --line:#e2e8f0; --text:#0f172a; --muted:#64748b; --blue:#2563eb; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family: Inter, system-ui, Arial, sans-serif; color:var(--text); background:var(--bg); }
+    .top { height:62px; border-bottom:1px solid var(--line); background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 16px; position:sticky; top:0; z-index:10; }
+    .title { font-weight:700; }
+    .sub { color:var(--muted); font-size:12px; }
+    .wrap { display:grid; grid-template-columns:240px 1fr 320px; min-height:calc(100vh - 62px); }
+    .left, .right { background:#fff; border-right:1px solid var(--line); }
+    .right { border-right:none; border-left:1px solid var(--line); }
+    .left { padding:14px; }
+    .navbtn { width:100%; text-align:left; border:1px solid transparent; background:transparent; padding:10px 12px; border-radius:10px; margin-bottom:6px; cursor:pointer; }
+    .navbtn.active { background:#dbeafe; color:#1e3a8a; border-color:#bfdbfe; font-weight:600; }
+    .main { padding:16px; }
+    .cards { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
+    .k { font-size:12px; color:var(--muted); text-transform:uppercase; }
+    .v { font-size:30px; font-weight:700; margin-top:6px; }
+    .panel { margin-top:12px; background:#fff; border:1px solid var(--line); border-radius:12px; overflow:auto; }
+    .panel h3 { margin:0; padding:12px; border-bottom:1px solid var(--line); font-size:15px; }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { border-bottom:1px solid #f1f5f9; padding:9px 10px; text-align:left; }
+    th { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
+    .kanban { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; padding:10px; }
+    .col { background:#f8fafc; border:1px solid var(--line); border-radius:10px; min-height:260px; }
+    .colhead { padding:8px 10px; border-bottom:1px solid var(--line); font-size:12px; color:#334155; font-weight:700; }
+    .task { margin:8px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; font-size:12px; }
+    .task .t1 { font-weight:600; }
+    .task .t2 { color:var(--muted); margin-top:4px; }
+    .right { padding:12px; }
+    .feed { max-height:calc(100vh - 140px); overflow:auto; }
+    .event { border:1px solid var(--line); border-radius:10px; padding:8px; margin-bottom:8px; background:#fff; }
+    .event .meta { font-size:11px; color:var(--muted); margin-bottom:4px; }
+    .badge { display:inline-block; font-size:10px; text-transform:uppercase; border:1px solid #cbd5e1; color:#475569; border-radius:999px; padding:1px 7px; margin-right:6px; }
+    .muted { color:var(--muted); }
+  </style>
+</head>
+<body>
+  <header class="top">
+    <div>
+      <div class="title">Mission Control · Control Dashboard</div>
+      <div class="sub">Synced with dev.db (auto refresh 2s)</div>
+    </div>
+    <div class="sub" id="updated">Updated —</div>
+  </header>
+
+  <div class="wrap">
+    <aside class="left">
+      <div class="sub" style="margin:4px 4px 10px">Navigation</div>
+      <button class="navbtn active" data-tab="overview">Overview</button>
+      <button class="navbtn" data-tab="categories">Categories</button>
+      <button class="navbtn" data-tab="projects">Projects</button>
+      <button class="navbtn" data-tab="tasks">Tasks</button>
+    </aside>
+
+    <main class="main">
+      <section id="tab-overview">
+        <div class="cards">
+          <div class="card"><div class="k">Categories</div><div class="v" id="kCategories">0</div></div>
+          <div class="card"><div class="k">Projects</div><div class="v" id="kProjects">0</div></div>
+          <div class="card"><div class="k">Tasks</div><div class="v" id="kTasks">0</div></div>
+          <div class="card"><div class="k">Pending Approvals</div><div class="v" id="kApprovals">0</div></div>
+        </div>
+        <div class="panel">
+          <h3>Execution Board</h3>
+          <div class="kanban" id="kanban"></div>
+        </div>
+      </section>
+
+      <section id="tab-categories" style="display:none">
+        <div class="panel"><h3>Categories</h3><div id="categories"></div></div>
+      </section>
+
+      <section id="tab-projects" style="display:none">
+        <div class="panel"><h3>Projects</h3><div id="projects"></div></div>
+      </section>
+
+      <section id="tab-tasks" style="display:none">
+        <div class="panel"><h3>Tasks</h3><div id="tasks"></div></div>
+      </section>
+    </main>
+
+    <aside class="right">
+      <h3 style="margin:4px 0 10px">Activity Chat</h3>
+      <div class="feed" id="feed"></div>
+    </aside>
+  </div>
+
+  <script>
+    const state = { prev: { categories:[], projects:[], tasks:[] }, events: [] };
+    const statusCols = ['plan','in_progress','review','approval_required','completed','blocked'];
+    const statusLabel = {
+      plan:'Plan', in_progress:'In Progress', review:'Review', approval_required:'Approval Required', completed:'Completed', blocked:'Blocked'
+    };
+
+    function addEvent(type, msg){
+      state.events.unshift({ ts: new Date().toLocaleTimeString(), type, msg });
+      state.events = state.events.slice(0, 120);
+      renderFeed();
+    }
+
+    function renderFeed(){
+      const el = document.getElementById('feed');
+      el.innerHTML = state.events.map(e =>
+        `<div class="event"><div class="meta"><span class="badge">${e.type}</span>${e.ts}</div><div>${escapeHtml(e.msg)}</div></div>`
+      ).join('') || `<div class="muted">Waiting for live events…</div>`;
+    }
+
+    function escapeHtml(s){ return String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+    function table(rows){
+      if(!rows.length) return '<div class="muted" style="padding:12px">No data</div>';
+      const cols = Object.keys(rows[0]);
+      return `<table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${escapeHtml(r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    }
+
+    function renderKanban(tasks){
+      const by = Object.fromEntries(statusCols.map(s => [s, []]));
+      tasks.forEach(t => {
+        const s = (t.status||'').toLowerCase();
+        by[by[s] ? s : 'plan'].push(t);
+      });
+      const root = document.getElementById('kanban');
+      root.innerHTML = statusCols.map(s => `
+        <div class="col">
+          <div class="colhead">${statusLabel[s]} (${by[s].length})</div>
+          ${(by[s].slice(0,25)).map(t => `
+            <div class="task">
+              <div class="t1">${escapeHtml(t.title || ('Task #' + t.id))}</div>
+              <div class="t2">${escapeHtml(t.project_name || '-')} • ${escapeHtml(t.assignee || 'Unassigned')}</div>
+            </div>
+          `).join('')}
+        </div>
+      `).join('');
+    }
+
+    function diffAndEmit(cur){
+      const prev = state.prev;
+      const pm = new Map(prev.tasks.map(x => [x.id, x]));
+      cur.tasks.forEach(t => {
+        const p = pm.get(t.id);
+        if(!p) addEvent('task.created', `Task created: ${t.title || ('#'+t.id)}`);
+        else if((p.status||'') !== (t.status||'')) addEvent('task.status', `${t.title || ('#'+t.id)} moved ${p.status || 'unknown'} → ${t.status || 'unknown'}`);
+      });
+      const catPrev = new Set(prev.categories.map(c => c.name));
+      cur.categories.forEach(c => { if(!catPrev.has(c.name)) addEvent('category.created', `Category added: ${c.name}`); });
+      const projPrev = new Set(prev.projects.map(p => p.id));
+      cur.projects.forEach(p => { if(!projPrev.has(p.id)) addEvent('project.created', `Project created: ${p.name}`); });
+      state.prev = cur;
+    }
+
+    async function load(){
+      const [o,c,p,t] = await Promise.all([
+        fetch('/api/overview').then(r=>r.json()),
+        fetch('/api/categories').then(r=>r.json()),
+        fetch('/api/projects').then(r=>r.json()),
+        fetch('/api/tasks').then(r=>r.json())
+      ]);
+
+      document.getElementById('kCategories').textContent = o.categories;
+      document.getElementById('kProjects').textContent = o.projects;
+      document.getElementById('kTasks').textContent = o.tasks;
+      document.getElementById('kApprovals').textContent = t.filter(x => (x.status||'').toLowerCase()==='approval_required').length;
+
+      document.getElementById('categories').innerHTML = table(c);
+      document.getElementById('projects').innerHTML = table(p);
+      document.getElementById('tasks').innerHTML = table(t);
+      renderKanban(t);
+
+      if(state.prev.tasks.length || state.prev.categories.length || state.prev.projects.length){
+        diffAndEmit({ categories:c, projects:p, tasks:t });
+      } else {
+        state.prev = { categories:c, projects:p, tasks:t };
+        addEvent('system', 'Dashboard connected to dev.db and live sync started.');
+      }
+
+      document.getElementById('updated').textContent = 'Updated ' + new Date().toLocaleString();
+    }
+
+    document.querySelectorAll('.navbtn').forEach(btn => {
+      btn.onclick = () => {
+        document.querySelectorAll('.navbtn').forEach(x=>x.classList.remove('active'));
+        btn.classList.add('active');
+        const tab = btn.dataset.tab;
+        ['overview','categories','projects','tasks'].forEach(id => {
+          document.getElementById('tab-'+id).style.display = (id===tab ? '' : 'none');
+        });
+      };
+    });
+
+    load().catch(e => addEvent('error', e.message || 'Load failed'));
+    setInterval(() => load().catch(e => addEvent('error', e.message || 'Load failed')), 2000);
+  </script>
+</body>
+</html>
