@@ -5,197 +5,450 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Control Dashboard</title>
   <style>
-    :root { --bg:#f8fafc; --card:#fff; --line:#e2e8f0; --text:#0f172a; --muted:#64748b; --blue:#2563eb; }
+    :root { --bg:#f8fafc; --card:#fff; --line:#e2e8f0; --text:#0f172a; --muted:#64748b; }
+    body.dark { --bg:#0b1020; --card:#121936; --line:#2a3668; --text:#e8ecff; --muted:#a7b0d6; }
     * { box-sizing:border-box; }
-    body { margin:0; font-family: Inter, system-ui, Arial, sans-serif; color:var(--text); background:var(--bg); }
-    .top { height:62px; border-bottom:1px solid var(--line); background:#fff; display:flex; align-items:center; justify-content:space-between; padding:0 16px; position:sticky; top:0; z-index:10; }
-    .title { font-weight:700; }
-    .sub { color:var(--muted); font-size:12px; }
-    .wrap { display:grid; grid-template-columns:240px 1fr 320px; min-height:calc(100vh - 62px); }
-    .left, .right { background:#fff; border-right:1px solid var(--line); }
-    .right { border-right:none; border-left:1px solid var(--line); }
-    .left { padding:14px; }
+    html, body { height:100%; }
+    body { margin:0; font-family:Inter,system-ui,Arial,sans-serif; color:var(--text); background:var(--bg); overflow:hidden; }
+    .top { height:62px; border-bottom:1px solid var(--line); background:var(--card); display:flex; align-items:center; justify-content:space-between; padding:0 16px; }
+    .title { font-weight:700; } .sub{ color:var(--muted); font-size:12px; }
+    .wrap { display:grid; grid-template-columns:220px minmax(0,1fr) 340px; height:calc(100vh - 62px); overflow:hidden; }
+    .left { background:var(--card); border-right:1px solid var(--line); padding:14px; overflow:auto; }
+    .main { padding:16px; overflow:auto; min-width:0; }
+    .right { border-left:1px solid var(--line); background:var(--card); padding:12px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
     .navbtn { width:100%; text-align:left; border:1px solid transparent; background:transparent; padding:10px 12px; border-radius:10px; margin-bottom:6px; cursor:pointer; }
     .navbtn.active { background:#dbeafe; color:#1e3a8a; border-color:#bfdbfe; font-weight:600; }
-    .main { padding:16px; }
-    .cards { display:grid; grid-template-columns:repeat(4,minmax(0,1fr)); gap:10px; }
+    .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
     .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; }
     .k { font-size:12px; color:var(--muted); text-transform:uppercase; }
     .v { font-size:30px; font-weight:700; margin-top:6px; }
-    .panel { margin-top:12px; background:#fff; border:1px solid var(--line); border-radius:12px; overflow:auto; }
+    .panel { margin-top:12px; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:auto; }
     .panel h3 { margin:0; padding:12px; border-bottom:1px solid var(--line); font-size:15px; }
+    .kanban-scroll { overflow-x:auto; overflow-y:hidden; padding:6px; }
+    .kanban { display:grid; grid-template-columns:repeat(6,260px); gap:10px; min-width:max-content; }
+    .col { background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); border:1px solid var(--line); border-radius:10px; min-height:220px; }
+    .colhead { padding:8px 10px; border-bottom:1px solid var(--line); font-size:12px; color:#334155; font-weight:700; }
+    .cardtask { margin:8px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px; font-size:12px; cursor:grab; }
+    .toolbar { display:flex; gap:8px; padding:10px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    input,select,button { border:1px solid var(--line); border-radius:8px; padding:8px; font-size:13px; background:var(--card); color:var(--text); }
+    button { cursor:pointer; }
+    .danger { background:#fee2e2; border-color:#fecaca; color:#991b1b; }
     table { width:100%; border-collapse:collapse; font-size:13px; }
     th, td { border-bottom:1px solid #f1f5f9; padding:9px 10px; text-align:left; }
-    th { color:var(--muted); font-size:12px; text-transform:uppercase; letter-spacing:.03em; }
-    .kanban { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; padding:10px; }
-    .col { background:#f8fafc; border:1px solid var(--line); border-radius:10px; min-height:260px; }
-    .colhead { padding:8px 10px; border-bottom:1px solid var(--line); font-size:12px; color:#334155; font-weight:700; }
-    .task { margin:8px; background:#fff; border:1px solid var(--line); border-radius:10px; padding:8px; font-size:12px; }
-    .task .t1 { font-weight:600; }
-    .task .t2 { color:var(--muted); margin-top:4px; }
-    .right { padding:12px; }
-    .feed { max-height:calc(100vh - 140px); overflow:auto; }
-    .event { border:1px solid var(--line); border-radius:10px; padding:8px; margin-bottom:8px; background:#fff; }
-    .event .meta { font-size:11px; color:var(--muted); margin-bottom:4px; }
-    .badge { display:inline-block; font-size:10px; text-transform:uppercase; border:1px solid #cbd5e1; color:#475569; border-radius:999px; padding:1px 7px; margin-right:6px; }
+    th { color:var(--muted); font-size:12px; text-transform:uppercase; }
     .muted { color:var(--muted); }
+
+    .approvalbox { border:1px solid var(--line); border-radius:10px; background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); padding:8px; margin-bottom:10px; max-height:32%; overflow:auto; }
+    .approvalrow { border:1px solid #dbeafe; background:#eff6ff; border-radius:8px; padding:8px; margin-bottom:8px; }
+    .approvalrow .meta { color:#1d4ed8; font-size:11px; margin-bottom:6px; }
+    .feed { border:1px solid var(--line); border-radius:10px; background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); padding:8px; flex:1; min-height:220px; overflow:auto; }
+    .hscroll { overflow-x:auto; }
+    .msg { border-radius:10px; padding:8px 10px; margin-bottom:8px; border:1px solid transparent; }
+    .meta { font-size:11px; margin-bottom:4px; display:flex; align-items:center; gap:6px; }
+    .icon { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; }
+    .system { background:#eef2ff; border-color:#c7d2fe; }
+    .system .meta { color:#4338ca; } .system .icon { background:#c7d2fe; }
+    .aran { background:#e0f2fe; border-color:#bae6fd; }
+    .aran .meta { color:#0369a1; } .aran .icon { background:#7dd3fc; }
+    .david { background:#ecfccb; border-color:#d9f99d; }
+    .david .meta { color:#3f6212; } .david .icon { background:#bef264; }
+    .kai { background:#ffedd5; border-color:#fed7aa; }
+    .kai .meta { color:#9a3412; } .kai .icon { background:#fdba74; }
+    .error { background:#fee2e2; border-color:#fecaca; }
+    .error .meta { color:#991b1b; } .error .icon { background:#fca5a5; }
+
+    .agent-box { margin-top:12px; border:1px solid var(--line); border-radius:10px; padding:8px; background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); }
+    .agent-row { display:flex; justify-content:space-between; align-items:center; padding:7px 8px; border:1px solid var(--line); border-radius:8px; margin-bottom:6px; background:var(--card); font-size:12px; }
+    .status-pill { border:1px solid var(--line); border-radius:999px; padding:2px 8px; font-size:11px; }
+
+    @media (max-width: 1200px) {
+      .wrap { grid-template-columns:180px minmax(0,1fr); }
+      .right { display:none; }
+    }
+    @media (max-width: 760px) {
+      .wrap { grid-template-columns:1fr; }
+      .left { display:none; }
+      .main { padding:10px; }
+      .cards { grid-template-columns:1fr; }
+    }
   </style>
 </head>
 <body>
   <header class="top">
     <div>
-      <div class="title">Mission Control · Control Dashboard</div>
-      <div class="sub">Synced with dev.db (auto refresh 2s)</div>
+      <div class="title">Control Dashboard</div>
+      <div class="sub">Synced with dev.db</div>
     </div>
-    <div class="sub" id="updated">Updated —</div>
+    <div style="display:flex; align-items:center; gap:8px;">
+      <button id="themeToggle" title="Toggle theme">🌙</button>
+      <div class="sub" id="updated">Updated —</div>
+    </div>
   </header>
 
   <div class="wrap">
     <aside class="left">
-      <div class="sub" style="margin:4px 4px 10px">Navigation</div>
       <button class="navbtn active" data-tab="overview">Overview</button>
       <button class="navbtn" data-tab="categories">Categories</button>
       <button class="navbtn" data-tab="projects">Projects</button>
       <button class="navbtn" data-tab="tasks">Tasks</button>
+
+      <div class="agent-box">
+        <div class="sub" style="margin-bottom:8px; font-weight:600">Agents Status</div>
+        <div id="agentsStatus"></div>
+      </div>
     </aside>
 
     <main class="main">
       <section id="tab-overview">
         <div class="cards">
-          <div class="card"><div class="k">Categories</div><div class="v" id="kCategories">0</div></div>
-          <div class="card"><div class="k">Projects</div><div class="v" id="kProjects">0</div></div>
-          <div class="card"><div class="k">Tasks</div><div class="v" id="kTasks">0</div></div>
-          <div class="card"><div class="k">Pending Approvals</div><div class="v" id="kApprovals">0</div></div>
+          <div class="card"><div class="k">Total Tasks</div><div class="v" id="kTotalTasks">0</div></div>
+          <div class="card"><div class="k">Complete Percentage</div><div class="v" id="kCompletePct">0%</div></div>
+          <div class="card"><div class="k">Pending Approval</div><div class="v" id="kPendingApproval">0</div></div>
         </div>
         <div class="panel">
-          <h3>Execution Board</h3>
-          <div class="kanban" id="kanban"></div>
+          <h3>Kanban (Drag & Drop)</h3>
+          <div class="kanban-scroll"><div class="kanban" id="kanban"></div></div>
         </div>
       </section>
 
       <section id="tab-categories" style="display:none">
-        <div class="panel"><h3>Categories</h3><div id="categories"></div></div>
+        <div class="panel"><h3>Categories</h3>
+          <div class="toolbar">
+            <input id="catName" placeholder="Category name" />
+            <input id="catDesc" placeholder="Description (optional)" />
+            <button id="addCat">Add</button>
+            <button class="danger" id="delCats">Delete selected</button>
+          </div><div id="categories"></div></div>
       </section>
 
       <section id="tab-projects" style="display:none">
-        <div class="panel"><h3>Projects</h3><div id="projects"></div></div>
+        <div class="panel"><h3>Projects</h3>
+          <div class="toolbar">
+            <input id="projName" placeholder="Project name" />
+            <select id="projCategory"></select>
+            <select id="projStatus"><option value="plan">plan</option><option value="in_progress">in_progress</option><option value="review">review</option><option value="approval_required">approval_required</option><option value="completed">completed</option><option value="blocked">blocked</option></select>
+            <input id="projPriority" type="number" min="1" max="5" value="3" style="width:90px" />
+            <button id="addProj">Add</button>
+            <button class="danger" id="delProjs">Delete selected</button>
+          </div>
+          <div class="toolbar">
+            <input id="projFilterText" placeholder="Filter projects by name" />
+            <select id="projFilterStatus"><option value="">All status</option><option value="plan">plan</option><option value="in_progress">in_progress</option><option value="review">review</option><option value="approval_required">approval_required</option><option value="completed">completed</option><option value="blocked">blocked</option></select>
+          </div>
+          <div id="projects" class="hscroll"></div></div>
       </section>
 
       <section id="tab-tasks" style="display:none">
-        <div class="panel"><h3>Tasks</h3><div id="tasks"></div></div>
+        <div class="panel"><h3>Tasks</h3>
+          <div class="toolbar">
+            <input id="taskTitle" placeholder="Task title" />
+            <select id="taskProject"></select>
+            <select id="taskStatus"><option value="plan">plan</option><option value="in_progress">in_progress</option><option value="review">review</option><option value="approval_required">approval_required</option><option value="completed">completed</option><option value="blocked">blocked</option></select>
+            <input id="taskAssignee" placeholder="Assignee (optional: Aran/David/Kai)" />
+            <button id="addTask">Add</button>
+            <button class="danger" id="delTasks">Delete selected</button>
+          </div>
+          <div class="toolbar">
+            <input id="taskFilterText" placeholder="Filter tasks by title" />
+            <select id="taskFilterStatus"><option value="">All status</option><option value="plan">plan</option><option value="in_progress">in_progress</option><option value="review">review</option><option value="approval_required">approval_required</option><option value="completed">completed</option><option value="blocked">blocked</option></select>
+            <select id="taskFilterAssignee"><option value="">All assignees</option><option value="Aran">Aran</option><option value="David">David</option><option value="Kai">Kai</option><option value="">Unassigned</option></select>
+          </div>
+          <div id="tasks" class="hscroll"></div></div>
       </section>
     </main>
 
     <aside class="right">
-      <h3 style="margin:4px 0 10px">Activity Chat</h3>
+      <h3 style="margin:4px 0 10px">Approvals (User-connected)</h3>
+      <div class="approvalbox" id="approvalBox"></div>
+      <h3 style="margin:4px 0 10px">Activity Chat (System Logs)</h3>
       <div class="feed" id="feed"></div>
     </aside>
   </div>
 
-  <script>
-    const state = { prev: { categories:[], projects:[], tasks:[] }, events: [] };
-    const statusCols = ['plan','in_progress','review','approval_required','completed','blocked'];
-    const statusLabel = {
-      plan:'Plan', in_progress:'In Progress', review:'Review', approval_required:'Approval Required', completed:'Completed', blocked:'Blocked'
-    };
+<script>
+const state = { categories:[], projects:[], tasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false };
+const selected = { categories:new Set(), projects:new Set(), tasks:new Set() };
+const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const KANBAN_COLS = ['plan','in_progress','review','approval_required','completed','blocked'];
+const KANBAN_LABEL = { plan:'Plan', in_progress:'In Progress', review:'Review', approval_required:'Approval Required', completed:'Completed', blocked:'Blocked' };
 
-    function addEvent(type, msg){
-      state.events.unshift({ ts: new Date().toLocaleTimeString(), type, msg });
-      state.events = state.events.slice(0, 120);
-      renderFeed();
+const AGENT_STYLE = {
+  system:{cls:'system', icon:'🖥️', name:'System'},
+  aran:{cls:'aran', icon:'🧠', name:'Aran'},
+  david:{cls:'david', icon:'🛠️', name:'David'},
+  kai:{cls:'kai', icon:'🚀', name:'Kai'},
+  error:{cls:'error', icon:'⚠️', name:'Error'}
+};
+
+function agentKeyFromAssignee(a){
+  const v=(a||'').toLowerCase().trim();
+  if(v==='aran') return 'aran';
+  if(v==='david') return 'david';
+  if(v==='kai') return 'kai';
+  return 'system';
+}
+
+function logEvent(agent, message){
+  const a = AGENT_STYLE[agent] || AGENT_STYLE.system;
+  state.events.unshift({ agent:a, message, ts:new Date().toLocaleTimeString() });
+  state.events = state.events.slice(0, 150);
+  renderFeed();
+}
+
+function renderFeed(){
+  feed.innerHTML = state.events.map(e => `
+    <div class="msg ${e.agent.cls}">
+      <div class="meta"><span class="icon">${e.agent.icon}</span><strong>${e.agent.name}</strong> · ${e.ts}</div>
+      <div>${esc(e.message)}</div>
+    </div>
+  `).join('') || '<p class="muted">Waiting for logs…</p>';
+}
+
+async function j(url, opt={}){ const r = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opt}); const d = await r.json(); if(!r.ok) throw new Error(d.error || ('HTTP '+r.status)); return d; }
+
+function renderTable(el, rows, key){
+  if(!rows.length){ el.innerHTML = '<p class="muted" style="padding:10px">No data</p>'; return; }
+  const cols = Object.keys(rows[0]);
+  el.innerHTML = `<table><thead><tr><th><input type="checkbox" data-all="${key}"></th>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr><td><input type="checkbox" data-row="${key}" value="${r.id}" ${selected[key].has(r.id)?'checked':''}></td>${cols.map(c=>`<td>${esc(r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+}
+
+function wireChecks(){
+  document.querySelectorAll('input[data-row]').forEach(ch=>ch.onchange=()=>{ const k=ch.dataset.row, id=Number(ch.value); ch.checked ? selected[k].add(id) : selected[k].delete(id); });
+  document.querySelectorAll('input[data-all]').forEach(ch=>ch.onchange=()=>{ const k=ch.dataset.all; const src=state[k]; if(ch.checked) src.forEach(x=>selected[k].add(x.id)); else selected[k].clear(); render(); });
+}
+
+function fillSelects(){
+  projCategory.innerHTML = `<option value="">No category</option>` + state.categories.map(c=>`<option value="${c.id}">${esc(c.name)}</option>`).join('');
+  taskProject.innerHTML = state.projects.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('');
+}
+
+function detectStructureEvents(){
+  const prevCats = new Map(state.prevCategories.map(c => [c.id, c]));
+  const currCats = new Map(state.categories.map(c => [c.id, c]));
+  for(const c of state.categories){ if(!prevCats.has(c.id)) logEvent('system', `Category created: ${c.name}`); }
+  for(const c of state.prevCategories){ if(!currCats.has(c.id)) logEvent('system', `Category deleted: ${c.name || ('#'+c.id)}`); }
+
+  const prevProjs = new Map(state.prevProjects.map(p => [p.id, p]));
+  const currProjs = new Map(state.projects.map(p => [p.id, p]));
+  for(const p of state.projects){ if(!prevProjs.has(p.id)) logEvent('kai', `Project created: ${p.name}`); }
+  for(const p of state.prevProjects){ if(!currProjs.has(p.id)) logEvent('kai', `Project deleted: ${p.name || ('#'+p.id)}`); }
+
+  state.prevCategories = state.categories.map(c => ({id:c.id, name:c.name}));
+  state.prevProjects = state.projects.map(p => ({id:p.id, name:p.name}));
+}
+
+function detectRealtimeTaskEvents(){
+
+  const prevTasks = new Map(state.prevTasks.map(t => [t.id, t]));
+  const currTasks = new Map(state.tasks.map(t => [t.id, t]));
+
+  // Created / updated
+  for(const t of state.tasks){
+    const p = prevTasks.get(t.id);
+    const agent = agentKeyFromAssignee(t.assignee);
+    if(!p){
+      logEvent(agent, `Task created: ${t.title || ('#'+t.id)}`);
+      continue;
     }
-
-    function renderFeed(){
-      const el = document.getElementById('feed');
-      el.innerHTML = state.events.map(e =>
-        `<div class="event"><div class="meta"><span class="badge">${e.type}</span>${e.ts}</div><div>${escapeHtml(e.msg)}</div></div>`
-      ).join('') || `<div class="muted">Waiting for live events…</div>`;
+    if((p.status||'') !== (t.status||'')){
+      logEvent(agent, `Task status changed: ${t.title || ('#'+t.id)} · ${p.status||'-'} → ${t.status||'-'}`);
     }
-
-    function escapeHtml(s){ return String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
-
-    function table(rows){
-      if(!rows.length) return '<div class="muted" style="padding:12px">No data</div>';
-      const cols = Object.keys(rows[0]);
-      return `<table><thead><tr>${cols.map(c=>`<th>${c}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr>${cols.map(c=>`<td>${escapeHtml(r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    if((p.assignee||'') !== (t.assignee||'')){
+      logEvent(agent, `Task reassigned: ${t.title || ('#'+t.id)} · ${p.assignee||'Unassigned'} → ${t.assignee||'Unassigned'}`);
     }
+    if((p.title||'') !== (t.title||'')){
+      logEvent(agent, `Task renamed: ${p.title||('#'+t.id)} → ${t.title||('#'+t.id)}`);
+    }
+  }
 
-    function renderKanban(tasks){
-      const by = Object.fromEntries(statusCols.map(s => [s, []]));
-      tasks.forEach(t => {
-        const s = (t.status||'').toLowerCase();
-        by[by[s] ? s : 'plan'].push(t);
-      });
-      const root = document.getElementById('kanban');
-      root.innerHTML = statusCols.map(s => `
-        <div class="col">
-          <div class="colhead">${statusLabel[s]} (${by[s].length})</div>
-          ${(by[s].slice(0,25)).map(t => `
-            <div class="task">
-              <div class="t1">${escapeHtml(t.title || ('Task #' + t.id))}</div>
-              <div class="t2">${escapeHtml(t.project_name || '-')} • ${escapeHtml(t.assignee || 'Unassigned')}</div>
-            </div>
-          `).join('')}
+  // Deleted
+  for(const p of state.prevTasks){
+    if(!currTasks.has(p.id)){
+      const agent = agentKeyFromAssignee(p.assignee);
+      logEvent(agent, `Task deleted: ${p.title || ('#'+p.id)}`);
+    }
+  }
+
+  state.prevTasks = state.tasks.map(t => ({id:t.id, status:t.status, assignee:t.assignee, title:t.title}));
+}
+
+function renderKanban(){
+  const grouped = Object.fromEntries(KANBAN_COLS.map(s => [s, []]));
+  state.tasks.forEach(t => {
+    const s = (t.status || 'plan').toLowerCase();
+    grouped[grouped[s] ? s : 'plan'].push(t);
+  });
+  kanban.innerHTML = KANBAN_COLS.map(s => `
+    <div class="col" data-status="${s}">
+      <div class="colhead">${KANBAN_LABEL[s]} (${grouped[s].length})</div>
+      ${grouped[s].map(t => `
+        <div class="cardtask" draggable="true" data-task-id="${t.id}">
+          <div><b>${esc(t.title || ('Task #'+t.id))}</b></div>
+          <div class="muted">${esc(t.project_name || '-')} • ${esc(t.assignee || 'Unassigned')}</div>
         </div>
-      `).join('');
-    }
+      `).join('')}
+    </div>
+  `).join('');
 
-    function diffAndEmit(cur){
-      const prev = state.prev;
-      const pm = new Map(prev.tasks.map(x => [x.id, x]));
-      cur.tasks.forEach(t => {
-        const p = pm.get(t.id);
-        if(!p) addEvent('task.created', `Task created: ${t.title || ('#'+t.id)}`);
-        else if((p.status||'') !== (t.status||'')) addEvent('task.status', `${t.title || ('#'+t.id)} moved ${p.status || 'unknown'} → ${t.status || 'unknown'}`);
-      });
-      const catPrev = new Set(prev.categories.map(c => c.name));
-      cur.categories.forEach(c => { if(!catPrev.has(c.name)) addEvent('category.created', `Category added: ${c.name}`); });
-      const projPrev = new Set(prev.projects.map(p => p.id));
-      cur.projects.forEach(p => { if(!projPrev.has(p.id)) addEvent('project.created', `Project created: ${p.name}`); });
-      state.prev = cur;
-    }
-
-    async function load(){
-      const [o,c,p,t] = await Promise.all([
-        fetch('/api/overview').then(r=>r.json()),
-        fetch('/api/categories').then(r=>r.json()),
-        fetch('/api/projects').then(r=>r.json()),
-        fetch('/api/tasks').then(r=>r.json())
-      ]);
-
-      document.getElementById('kCategories').textContent = o.categories;
-      document.getElementById('kProjects').textContent = o.projects;
-      document.getElementById('kTasks').textContent = o.tasks;
-      document.getElementById('kApprovals').textContent = t.filter(x => (x.status||'').toLowerCase()==='approval_required').length;
-
-      document.getElementById('categories').innerHTML = table(c);
-      document.getElementById('projects').innerHTML = table(p);
-      document.getElementById('tasks').innerHTML = table(t);
-      renderKanban(t);
-
-      if(state.prev.tasks.length || state.prev.categories.length || state.prev.projects.length){
-        diffAndEmit({ categories:c, projects:p, tasks:t });
-      } else {
-        state.prev = { categories:c, projects:p, tasks:t };
-        addEvent('system', 'Dashboard connected to dev.db and live sync started.');
-      }
-
-      document.getElementById('updated').textContent = 'Updated ' + new Date().toLocaleString();
-    }
-
-    document.querySelectorAll('.navbtn').forEach(btn => {
-      btn.onclick = () => {
-        document.querySelectorAll('.navbtn').forEach(x=>x.classList.remove('active'));
-        btn.classList.add('active');
-        const tab = btn.dataset.tab;
-        ['overview','categories','projects','tasks'].forEach(id => {
-          document.getElementById('tab-'+id).style.display = (id===tab ? '' : 'none');
-        });
-      };
+  document.querySelectorAll('.cardtask').forEach(el => {
+    el.addEventListener('dragstart', e => {
+      e.dataTransfer.setData('text/plain', el.dataset.taskId);
     });
+  });
+  document.querySelectorAll('.col').forEach(col => {
+    col.addEventListener('dragover', e => e.preventDefault());
+    col.addEventListener('drop', async e => {
+      e.preventDefault();
+      const taskId = e.dataTransfer.getData('text/plain');
+      const newStatus = col.dataset.status;
+      if(!taskId || !newStatus) return;
+      try {
+        await j('/api/tasks/update-status', {method:'POST', body:JSON.stringify({task_id:Number(taskId), status:newStatus})});
+        logEvent('aran', `Kanban move: Task #${taskId} → ${newStatus}`);
+        await load();
+      } catch(err) {
+        logEvent('error', err.message || 'Kanban update failed');
+      }
+    });
+  });
+}
 
-    load().catch(e => addEvent('error', e.message || 'Load failed'));
-    setInterval(() => load().catch(e => addEvent('error', e.message || 'Load failed')), 2000);
-  </script>
+function renderAgentsStatus(){
+  const names = ['Aran','David','Kai'];
+  const byAssignee = Object.fromEntries(names.map(n => [n, state.tasks.filter(t => (t.assignee||'') === n)]));
+  const html = names.map(n => {
+    const list = byAssignee[n];
+    const inProgress = list.filter(t => (t.status||'').toLowerCase()==='in_progress').length;
+    const review = list.filter(t => (t.status||'').toLowerCase()==='review').length;
+    const pending = list.filter(t => (t.status||'').toLowerCase()==='approval_required').length;
+    const status = inProgress > 0 ? 'working' : (review > 0 || pending > 0 ? 'active' : 'idle');
+    return `<div class="agent-row"><span>${n}</span><span class="status-pill">${status}${inProgress?` · ${inProgress} running`:''}</span></div>`;
+  }).join('');
+  agentsStatus.innerHTML = html;
+}
+
+function renderApprovals(){
+  const pending = state.tasks.filter(t => (t.status||'').toLowerCase() === 'approval_required');
+  approvalBox.innerHTML = pending.length ? pending.map(t => `
+    <div class="approvalrow">
+      <div class="meta">User approval required · ${esc(t.project_name || '-')}</div>
+      <div style="font-weight:600; margin-bottom:6px">${esc(t.title || ('Task #'+t.id))}</div>
+      <div style="display:flex; gap:6px; flex-wrap:wrap">
+        <button onclick="approveTask(${t.id}, 'completed')">Accept</button>
+        <button class="danger" onclick="approveTask(${t.id}, 'blocked')">Reject</button>
+        <input id="approval-note-${t.id}" placeholder="Optional user input / note" style="min-width:180px" />
+      </div>
+    </div>
+  `).join('') : '<div class="muted">No pending user approvals.</div>';
+}
+
+function render(){
+  renderTable(categories, state.categories, 'categories');
+
+  const projText = (projFilterText?.value || '').toLowerCase().trim();
+  const projStatusVal = (projFilterStatus?.value || '').toLowerCase().trim();
+  const filteredProjects = state.projects.filter(p => {
+    const okText = !projText || String(p.name||'').toLowerCase().includes(projText);
+    const okStatus = !projStatusVal || String(p.status||'').toLowerCase() === projStatusVal;
+    return okText && okStatus;
+  });
+  renderTable(projects, filteredProjects, 'projects');
+
+  const taskText = (taskFilterText?.value || '').toLowerCase().trim();
+  const taskStatusVal = (taskFilterStatus?.value || '').toLowerCase().trim();
+  const taskAssigneeVal = (taskFilterAssignee?.value || '').trim();
+  const filteredTasks = state.tasks.filter(t => {
+    const okText = !taskText || String(t.title||'').toLowerCase().includes(taskText);
+    const okStatus = !taskStatusVal || String(t.status||'').toLowerCase() === taskStatusVal;
+    const okAssignee = !taskAssigneeVal || String(t.assignee||'') === taskAssigneeVal;
+    return okText && okStatus && okAssignee;
+  });
+  renderTable(tasks, filteredTasks, 'tasks');
+
+  renderKanban();
+  renderApprovals();
+  renderAgentsStatus();
+  fillSelects();
+  wireChecks();
+}
+
+async function load(){
+  const [overview,categoriesData,projectsData,tasksData] = await Promise.all([ j('/api/overview'), j('/api/categories'), j('/api/projects'), j('/api/tasks') ]);
+  kTotalTasks.textContent = overview.total_tasks;
+  kCompletePct.textContent = overview.complete_percentage + '%';
+  kPendingApproval.textContent = overview.pending_approval;
+
+  state.categories = categoriesData; state.projects = projectsData; state.tasks = tasksData;
+  const inProgressNow = state.tasks.filter(t => (t.status||'').toLowerCase()==='in_progress').length;
+  if(state.prevInProgress !== -1 && state.prevInProgress !== inProgressNow){
+    logEvent('system', `Live runtime: ${inProgressNow} task(s) currently in progress.`);
+  }
+  state.prevInProgress = inProgressNow;
+  selected.categories.clear(); selected.projects.clear(); selected.tasks.clear();
+  render();
+  if(!state.bootstrapped){
+    state.prevCategories = state.categories.map(c => ({id:c.id, name:c.name}));
+    state.prevProjects = state.projects.map(p => ({id:p.id, name:p.name}));
+    state.prevTasks = state.tasks.map(t => ({id:t.id, status:t.status, assignee:t.assignee, title:t.title}));
+    state.bootstrapped = true;
+    logEvent('system', `Live feed connected. Running now: ${inProgressNow} in-progress task(s).`);
+  } else {
+    detectStructureEvents();
+    detectRealtimeTaskEvents();
+  }
+  updated.textContent = 'Updated ' + new Date().toLocaleString();
+}
+
+addCat.onclick = async () => { try{ await j('/api/categories/add',{method:'POST',body:JSON.stringify({name:catName.value,description:catDesc.value})}); logEvent('system', `Category added: ${catName.value}`); catName.value=''; catDesc.value=''; await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+delCats.onclick = async () => { if(!selected.categories.size) return alert('Select category rows first'); if(!confirm('Delete selected categories?')) return; try{ await j('/api/categories/delete',{method:'POST',body:JSON.stringify({ids:[...selected.categories]})}); logEvent('system', `Deleted ${selected.categories.size} categories`); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+
+addProj.onclick = async () => { try{ await j('/api/projects/add',{method:'POST',body:JSON.stringify({name:projName.value,category_id:projCategory.value||null,status:projStatus.value,priority:Number(projPriority.value||3)})}); logEvent('kai', `Project added: ${projName.value}`); projName.value=''; await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+delProjs.onclick = async () => { if(!selected.projects.size) return alert('Select project rows first'); if(!confirm('Delete selected projects? (linked tasks may be removed)')) return; try{ await j('/api/projects/delete',{method:'POST',body:JSON.stringify({ids:[...selected.projects]})}); logEvent('kai', `Deleted ${selected.projects.size} projects`); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+
+addTask.onclick = async () => { try{ const agent = agentKeyFromAssignee(taskAssignee.value); await j('/api/tasks/add',{method:'POST',body:JSON.stringify({title:taskTitle.value,project_id:taskProject.value,status:taskStatus.value,assignee:taskAssignee.value})}); logEvent(agent, `Task added: ${taskTitle.value}`); taskTitle.value=''; taskAssignee.value=''; await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+delTasks.onclick = async () => { if(!selected.tasks.size) return alert('Select task rows first'); if(!confirm('Delete selected tasks?')) return; try{ await j('/api/tasks/delete',{method:'POST',body:JSON.stringify({ids:[...selected.tasks]})}); logEvent('david', `Deleted ${selected.tasks.size} tasks`); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+
+async function approveTask(taskId, targetStatus){
+  try{
+    const noteEl = document.getElementById(`approval-note-${taskId}`);
+    const note = noteEl ? noteEl.value.trim() : '';
+    await j('/api/tasks/update-status',{method:'POST',body:JSON.stringify({task_id:taskId, status:targetStatus})});
+    logEvent('system', `User ${targetStatus==='completed'?'accepted':'rejected'} approval for Task #${taskId}${note?` · Note: ${note}`:''}`);
+    await load();
+  }catch(e){
+    logEvent('error', e.message || 'Approval action failed');
+    alert(e.message || 'Approval action failed');
+  }
+}
+window.approveTask = approveTask;
+
+[projFilterText, projFilterStatus, taskFilterText, taskFilterStatus, taskFilterAssignee].forEach(el => {
+  if(!el) return;
+  el.addEventListener('input', render);
+  el.addEventListener('change', render);
+});
+
+document.querySelectorAll('.navbtn').forEach(btn => btn.onclick = () => {
+  document.querySelectorAll('.navbtn').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
+  ['overview','categories','projects','tasks'].forEach(id => document.getElementById('tab-'+id).style.display = (id===btn.dataset.tab ? '' : 'none'));
+});
+
+const savedTheme = localStorage.getItem('cd_theme') || 'light';
+if(savedTheme === 'dark') document.body.classList.add('dark');
+const themeBtn = document.getElementById('themeToggle');
+if(themeBtn){
+  themeBtn.textContent = document.body.classList.contains('dark') ? '☀️' : '🌙';
+  themeBtn.addEventListener('click', () => {
+    document.body.classList.toggle('dark');
+    const dark = document.body.classList.contains('dark');
+    themeBtn.textContent = dark ? '☀️' : '🌙';
+    localStorage.setItem('cd_theme', dark ? 'dark' : 'light');
+  });
+}
+
+logEvent('system','Activity chat initialized.');
+load().catch(e => logEvent('error', e.message));
+setInterval(() => load().catch(e => logEvent('error', e.message)), 1000);
+</script>
 </body>
 </html>
