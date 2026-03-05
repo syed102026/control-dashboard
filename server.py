@@ -9,6 +9,18 @@ BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path('/Users/openclaw/Desktop/March2026/databases/dev.db')
 LOG_DB_PATH = Path('/Users/openclaw/Desktop/March2026/databases/log.db')
 
+STATUS_ALIASES = {
+    'todo': 'plan',
+    'done': 'completed',
+    'complete': 'completed',
+    'working': 'in_progress',
+}
+
+
+def normalize_status(value: str, default: str = 'plan') -> str:
+    raw = (value or default).strip().lower()
+    return STATUS_ALIASES.get(raw, raw)
+
 
 def get_conn():
     conn = sqlite3.connect(DB_PATH)
@@ -82,7 +94,7 @@ class H(BaseHTTPRequestHandler):
         p = u.path
         if p == '/api/overview':
             total_tasks = q('select count(*) as c from tasks')[0]['c']
-            completed = q("select count(*) as c from tasks where lower(status)='completed'")[0]['c']
+            completed = q("select count(*) as c from tasks where lower(status) in ('completed','done','complete')")[0]['c']
             pending_approval = q("select count(*) as c from tasks where lower(status)='approval_required'")[0]['c']
             complete_percentage = int(round((completed / total_tasks) * 100)) if total_tasks else 0
             return self._json({
@@ -98,10 +110,13 @@ class H(BaseHTTPRequestHandler):
                 from projects p left join categories c on c.id=p.category_id order by p.id
             '''))
         if p == '/api/tasks':
-            return self._json(q('''
+            rows = q('''
                 select t.id,t.title,t.description,t.status,t.assignee,t.due_at,t.project_id,p.name as project_name,t.created_at,t.updated_at
                 from tasks t left join projects p on p.id=t.project_id order by t.id
-            '''))
+            ''')
+            for r in rows:
+                r['status'] = normalize_status(r.get('status') or 'plan')
+            return self._json(rows)
         if p == '/api/logs':
             qs = parse_qs(u.query or '')
             limit = int((qs.get('limit') or ['150'])[0])
@@ -164,7 +179,7 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'error': 'name required'}, 400)
                 category_id = body.get('category_id')
                 category_id = int(category_id) if category_id not in (None, '', 'null') else None
-                status = (body.get('status') or 'plan').strip().lower()
+                status = normalize_status(body.get('status') or 'plan')
                 priority = int(body.get('priority') or 3)
                 conn.execute(
                     'insert into projects (name, category_id, status, priority) values (?, ?, ?, ?)',
@@ -189,7 +204,7 @@ class H(BaseHTTPRequestHandler):
                 if not title or project_id in (None, ''):
                     return self._json({'error': 'title and project_id required'}, 400)
                 project_id = int(project_id)
-                status = (body.get('status') or 'plan').strip().lower()
+                status = normalize_status(body.get('status') or 'plan')
                 assignee = (body.get('assignee') or '').strip() or None
                 description = (body.get('description') or '').strip() or None
                 due_at = (body.get('due_at') or '').strip() or None
@@ -212,7 +227,7 @@ class H(BaseHTTPRequestHandler):
 
             if p == '/api/tasks/update-status':
                 task_id = body.get('task_id')
-                status = (body.get('status') or '').strip().lower()
+                status = normalize_status(body.get('status') or '')
                 allowed = {'plan', 'in_progress', 'review', 'approval_required', 'completed', 'blocked'}
                 if task_id in (None, '') or status not in allowed:
                     return self._json({'error': 'task_id and valid status required'}, 400)
