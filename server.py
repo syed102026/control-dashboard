@@ -84,6 +84,29 @@ def ensure_dev_db():
                 deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
             )
         ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS handoffs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                task_id INTEGER,
+                from_team TEXT NOT NULL,
+                to_team TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                note TEXT,
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS inbox (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent TEXT NOT NULL,
+                title TEXT NOT NULL,
+                body TEXT,
+                status TEXT NOT NULL DEFAULT 'unread',
+                created_at TEXT NOT NULL DEFAULT (datetime('now')),
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        ''')
         conn.commit()
     finally:
         conn.close()
@@ -231,6 +254,54 @@ class H(BaseHTTPRequestHandler):
         if p == '/api/flow/status':
             return self._json({'state': get_flow_state()})
 
+        if p == '/api/agents-summary':
+            agents = ['Atlas','Aran','David','Quinn','Kai','Jerry','Nikola','Albert','Warren','Steve','Philip']
+            rows = []
+            log_conn = get_log_conn()
+            try:
+                for a in agents:
+                    st = q("""
+                        SELECT
+                          SUM(CASE WHEN lower(status)='in_progress' THEN 1 ELSE 0 END) as in_progress,
+                          SUM(CASE WHEN lower(status)='review' THEN 1 ELSE 0 END) as review,
+                          SUM(CASE WHEN lower(status)='blocked' THEN 1 ELSE 0 END) as blocked,
+                          SUM(CASE WHEN lower(status)='completed' THEN 1 ELSE 0 END) as completed
+                        FROM tasks WHERE lower(coalesce(assignee,''))=lower(?)
+                    """, (a,))[0]
+                    cur = log_conn.execute("SELECT ts, message FROM work_logs WHERE lower(agent)=lower(?) ORDER BY id DESC LIMIT 1", (a,))
+                    last = cur.fetchone()
+                    rows.append({
+                        'agent': a,
+                        'in_progress': int(st.get('in_progress') or 0),
+                        'review': int(st.get('review') or 0),
+                        'blocked': int(st.get('blocked') or 0),
+                        'completed': int(st.get('completed') or 0),
+                        'last_activity_at': last['ts'] if last else None,
+                        'last_activity': last['message'] if last else None,
+                    })
+            finally:
+                log_conn.close()
+            return self._json(rows)
+
+        if p == '/api/ops-metrics':
+            total = q('SELECT COUNT(*) c FROM tasks')[0]['c']
+            completed = q("SELECT COUNT(*) c FROM tasks WHERE lower(status)='completed'")[0]['c']
+            blocked = q("SELECT COUNT(*) c FROM tasks WHERE lower(status)='blocked'")[0]['c']
+            review = q("SELECT COUNT(*) c FROM tasks WHERE lower(status)='review'")[0]['c']
+            in_progress = q("SELECT COUNT(*) c FROM tasks WHERE lower(status)='in_progress'")[0]['c']
+            stale = q("SELECT COUNT(*) c FROM tasks WHERE lower(status)='in_progress' AND updated_at < datetime('now','-1 day')")[0]['c']
+            handoff_pending = q("SELECT COUNT(*) c FROM handoffs WHERE lower(status)='pending'")[0]['c']
+            return self._json({
+                'total_tasks': total,
+                'completed_tasks': completed,
+                'completion_rate': int(round((completed / total) * 100)) if total else 0,
+                'blocked_tasks': blocked,
+                'review_tasks': review,
+                'in_progress_tasks': in_progress,
+                'stale_in_progress': stale,
+                'pending_handoffs': handoff_pending,
+            })
+
         if p == '/api/overview':
             total_tasks = q('select count(*) as c from tasks')[0]['c']
             completed = q("select count(*) as c from tasks where lower(status) in ('completed','done','complete')")[0]['c']
@@ -285,6 +356,18 @@ class H(BaseHTTPRequestHandler):
             for r in rows:
                 r['status'] = valid_status(r.get('status') or 'plan')
             return self._json(rows)
+        if p == '/api/handoffs':
+            return self._json(q('''
+                select h.id,h.task_id,t.title as task_title,h.from_team,h.to_team,h.status,h.note,h.created_at,h.updated_at
+                from handoffs h left join tasks t on t.id=h.task_id
+                order by h.id desc
+            '''))
+        if p == '/api/inbox':
+            qs = parse_qs(u.query or '')
+            agent = (qs.get('agent') or [''])[0]
+            if agent:
+                return self._json(q("select * from inbox where lower(agent)=lower(?) order by id desc", (agent,)))
+            return self._json(q("select * from inbox order by id desc"))
         if p == '/api/logs':
             qs = parse_qs(u.query or '')
             limit = int((qs.get('limit') or ['150'])[0])
@@ -353,6 +436,54 @@ class H(BaseHTTPRequestHandler):
                 add_log('system', 'Flow stopped')
                 bump_event_seq()
                 return self._json({'ok': True, 'state': 'stopped'})
+
+            if p == '/api/handoffs/add':
+                task_id = body.get('task_id')
+                from_team = (body.get('from_team') or '').strip().lower()
+                to_team = (body.get('to_team') or '').strip().lower()
+                note = (body.get('note') or '').strip() or None
+                if not from_team or not to_team:
+                    return self._json({'error': 'from_team and to_team required'}, 400)
+                conn.execute('insert into handoffs(task_id,from_team,to_team,status,note) values(?,?,?,?,?)',
+                             (int(task_id) if task_id else None, from_team, to_team, 'pending', note))
+                conn.commit()
+                add_log('system', f'Handoff created: {from_team} -> {to_team}')
+                bump_event_seq()
+                return self._json({'ok': True})
+
+            if p == '/api/handoffs/update':
+                hid = body.get('handoff_id')
+                status = (body.get('status') or '').strip().lower()
+                note = (body.get('note') or '').strip() or None
+                if hid in (None, '') or status not in {'pending','accepted','rejected','completed'}:
+                    return self._json({'error': 'handoff_id and valid status required'}, 400)
+                conn.execute('update handoffs set status=?, note=coalesce(?,note), updated_at=datetime(\'now\') where id=?', (status, note, int(hid)))
+                conn.commit()
+                add_log('system', f'Handoff #{hid} moved to {status}')
+                bump_event_seq()
+                return self._json({'ok': True})
+
+            if p == '/api/inbox/add':
+                agent = (body.get('agent') or '').strip()
+                title = (body.get('title') or '').strip()
+                msg = (body.get('body') or '').strip() or None
+                if not agent or not title:
+                    return self._json({'error': 'agent and title required'}, 400)
+                conn.execute('insert into inbox(agent,title,body,status) values(?,?,?,?)', (agent, title, msg, 'unread'))
+                conn.commit()
+                add_log('system', f'Inbox item added for {agent}: {title}')
+                bump_event_seq()
+                return self._json({'ok': True})
+
+            if p == '/api/inbox/update':
+                iid = body.get('inbox_id')
+                status = (body.get('status') or '').strip().lower()
+                if iid in (None, '') or status not in {'unread','read','done'}:
+                    return self._json({'error': 'inbox_id and valid status required'}, 400)
+                conn.execute('update inbox set status=?, updated_at=datetime(\'now\') where id=?', (status, int(iid)))
+                conn.commit()
+                bump_event_seq()
+                return self._json({'ok': True})
 
             if p == '/api/backup/create':
                 out = create_backup()
@@ -536,9 +667,11 @@ class H(BaseHTTPRequestHandler):
                 status = valid_status(body.get('status') or '', default='')
                 if task_id in (None, '') or status not in ALLOWED_STATUS:
                     return self._json({'error': 'task_id and valid status required'}, 400)
-                task_row = conn.execute('select id,title,status,assignee from tasks where id=?', (int(task_id),)).fetchone()
+                task_row = conn.execute('select id,title,status,assignee,evidence_link from tasks where id=?', (int(task_id),)).fetchone()
                 if not task_row:
                     return self._json({'error': 'task not found'}, 404)
+                if status == 'completed' and not (task_row['evidence_link'] or '').strip():
+                    return self._json({'error': 'evidence_link required before completed. Update task metadata first.'}, 400)
                 conn.execute('update tasks set status=? where id=?', (status, int(task_id)))
                 conn.commit()
                 agent = (task_row['assignee'] or 'aran').strip().lower()

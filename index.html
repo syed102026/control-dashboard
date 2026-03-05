@@ -141,6 +141,9 @@
   <div class="wrap">
     <aside class="left">
       <button class="navbtn active" data-tab="overview"><span>▣</span>Overview</button>
+      <button class="navbtn" data-tab="agents"><span>👥</span>Agents CRM</button>
+      <button class="navbtn" data-tab="handoffs"><span>⇄</span>Handoffs</button>
+      <button class="navbtn" data-tab="ops"><span>📊</span>Ops Metrics</button>
       <button class="navbtn" data-tab="categories"><span>◫</span>Categories</button>
       <button class="navbtn" data-tab="projects"><span>◧</span>Projects</button>
       <button class="navbtn" data-tab="tasks"><span>☰</span>Tasks</button>
@@ -162,6 +165,27 @@
           <h3>Kanban (Drag & Drop)</h3>
           <div class="kanban-scroll"><div class="kanban" id="kanban"></div></div>
         </div>
+      </section>
+
+      <section id="tab-agents" style="display:none">
+        <div class="panel"><h3>Agents CRM (Real-time)</h3><div id="agentsCrm" class="hscroll"></div></div>
+      </section>
+
+      <section id="tab-handoffs" style="display:none">
+        <div class="panel"><h3>Cross-team Handoffs</h3>
+          <div class="toolbar">
+            <input id="handoffTaskId" placeholder="Task ID (optional)" />
+            <select id="handoffFrom"><option value="saas">saas</option><option value="research">research</option><option value="business">business</option><option value="atlas">atlas</option></select>
+            <select id="handoffTo"><option value="saas">saas</option><option value="research">research</option><option value="business">business</option><option value="atlas">atlas</option></select>
+            <input id="handoffNote" placeholder="Note" />
+            <button id="addHandoff">Create handoff</button>
+          </div>
+          <div id="handoffs" class="hscroll"></div>
+        </div>
+      </section>
+
+      <section id="tab-ops" style="display:none">
+        <div class="panel"><h3>Operational Metrics</h3><div id="opsMetrics" style="padding:12px"></div></div>
       </section>
 
       <section id="tab-categories" style="display:none">
@@ -231,7 +255,7 @@
   </div>
 
 <script>
-const state = { categories:[], projects:[], tasks:[], deletedTasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false, logCursor:0, loading:false, eventSeq:-1 };
+const state = { categories:[], projects:[], tasks:[], deletedTasks:[], agentsSummary:[], handoffs:[], ops:{}, prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false, logCursor:0, loading:false, eventSeq:-1 };
 const selected = { categories:new Set(), projects:new Set(), tasks:new Set(), deletedTasks:new Set() };
 const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // Core workflow columns used across the drag/drop Kanban
@@ -372,6 +396,21 @@ function renderTasksTable(rows){
   tasks.innerHTML = `<table><thead><tr><th><input type="checkbox" data-all="tasks"></th>${cols.map(c=>`<th>${esc(c)}</th>`).join('')}</tr></thead><tbody>${rows.map(r=>`<tr><td><input type="checkbox" data-row="tasks" value="${r.id}" ${selected.tasks.has(r.id)?'checked':''}></td>${cols.map(c=>`<td>${c==='assignee'?assigneeBadge(r[c]):esc(r[c])}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
 }
 
+function renderAgentsCrm(){
+  if(!state.agentsSummary.length){ agentsCrm.innerHTML='<p class="muted" style="padding:10px">No agent data</p>'; return; }
+  agentsCrm.innerHTML = `<table><thead><tr><th>Agent</th><th>In Progress</th><th>Review</th><th>Blocked</th><th>Completed</th><th>Last Activity</th></tr></thead><tbody>${state.agentsSummary.map(a=>`<tr><td>${esc(a.agent)}</td><td>${a.in_progress}</td><td>${a.review}</td><td>${a.blocked}</td><td>${a.completed}</td><td title="${esc(a.last_activity||'')}">${esc(a.last_activity_at||'-')}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function renderHandoffs(){
+  if(!state.handoffs.length){ handoffs.innerHTML='<p class="muted" style="padding:10px">No handoffs yet</p>'; return; }
+  handoffs.innerHTML = `<table><thead><tr><th>ID</th><th>Task</th><th>From</th><th>To</th><th>Status</th><th>Note</th></tr></thead><tbody>${state.handoffs.map(h=>`<tr><td>${h.id}</td><td>${esc(h.task_title||h.task_id||'-')}</td><td>${esc(h.from_team)}</td><td>${esc(h.to_team)}</td><td>${esc(h.status)}</td><td>${esc(h.note||'')}</td></tr>`).join('')}</tbody></table>`;
+}
+
+function renderOps(){
+  const o=state.ops||{};
+  opsMetrics.innerHTML = `<div class="cards"><div class="card"><div class="k">Completion Rate</div><div class="v">${o.completion_rate||0}%</div></div><div class="card"><div class="k">In Progress</div><div class="v">${o.in_progress_tasks||0}</div></div><div class="card"><div class="k">Blocked</div><div class="v">${o.blocked_tasks||0}</div></div><div class="card"><div class="k">Pending Handoffs</div><div class="v">${o.pending_handoffs||0}</div></div></div>`;
+}
+
 function renderKanban(){
   const grouped = Object.fromEntries(KANBAN_COLS.map(s => [s, []]));
   state.tasks.forEach(t => {
@@ -478,6 +517,9 @@ function render(){
   renderTasksTable(filteredTasks);
 
   renderTable(deletedTasks, state.deletedTasks, 'deletedTasks');
+  renderAgentsCrm();
+  renderHandoffs();
+  renderOps();
 
   renderKanban();
   renderApprovals();
@@ -490,13 +532,13 @@ async function load(){
   if(state.loading) return;
   state.loading = true;
   try {
-    const [overview,categoriesData,projectsData,tasksData,deletedTasksData] = await Promise.all([ j('/api/overview'), j('/api/categories'), j('/api/projects'), j('/api/tasks'), j('/api/deleted-tasks') ]);
+    const [overview,categoriesData,projectsData,tasksData,deletedTasksData,agentsSummaryData,handoffsData,opsData] = await Promise.all([ j('/api/overview'), j('/api/categories'), j('/api/projects'), j('/api/tasks'), j('/api/deleted-tasks'), j('/api/agents-summary'), j('/api/handoffs'), j('/api/ops-metrics') ]);
     await Promise.all([loadLogs(), loadFlowState()]);
   kTotalTasks.textContent = overview.total_tasks;
   kCompletePct.textContent = overview.complete_percentage + '%';
   kPendingApproval.textContent = overview.pending_approval;
 
-  state.categories = categoriesData; state.projects = projectsData; state.tasks = tasksData; state.deletedTasks = deletedTasksData;
+  state.categories = categoriesData; state.projects = projectsData; state.tasks = tasksData; state.deletedTasks = deletedTasksData; state.agentsSummary = agentsSummaryData; state.handoffs = handoffsData; state.ops = opsData;
   const inProgressNow = state.tasks.filter(t => (t.status||'').toLowerCase()==='in_progress').length;
   // Runtime count changes are reflected by server logs and overview cards.
   state.prevInProgress = inProgressNow;
@@ -585,6 +627,16 @@ restoreProject.onclick = async () => {
   }
 };
 
+addHandoff.onclick = async () => {
+  try {
+    await j('/api/handoffs/add', { method:'POST', body: JSON.stringify({ task_id: handoffTaskId.value || null, from_team: handoffFrom.value, to_team: handoffTo.value, note: handoffNote.value }) });
+    handoffTaskId.value=''; handoffNote.value='';
+    await load();
+  } catch (e) {
+    alert(e.message || 'Failed to create handoff');
+  }
+};
+
 [projFilterText, projFilterStatus, taskFilterText, taskFilterStatus, taskFilterAssignee].forEach(el => {
   if(!el) return;
   el.addEventListener('input', render);
@@ -593,7 +645,7 @@ restoreProject.onclick = async () => {
 
 document.querySelectorAll('.navbtn').forEach(btn => btn.onclick = () => {
   document.querySelectorAll('.navbtn').forEach(b=>b.classList.remove('active')); btn.classList.add('active');
-  ['overview','categories','projects','tasks'].forEach(id => document.getElementById('tab-'+id).style.display = (id===btn.dataset.tab ? '' : 'none'));
+  ['overview','agents','handoffs','ops','categories','projects','tasks'].forEach(id => document.getElementById('tab-'+id).style.display = (id===btn.dataset.tab ? '' : 'none'));
 });
 
 const moonIcon = '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"/></svg>';
