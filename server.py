@@ -408,6 +408,19 @@ class H(BaseHTTPRequestHandler):
                 bump_event_seq()
                 return self._json({'ok': True})
 
+            if p == '/api/logs/clear':
+                lc = get_log_conn()
+                try:
+                    lc.execute('DELETE FROM work_logs')
+                    lc.execute("DELETE FROM sqlite_sequence WHERE name='work_logs'")
+                    lc.commit()
+                finally:
+                    lc.close()
+                # re-seed with one system marker so feed is never confusingly blank
+                add_log('system', 'System logs cleared by user')
+                bump_event_seq()
+                return self._json({'ok': True})
+
             if p == '/api/flow/start':
                 set_flow_state('running')
                 has_running = conn.execute("SELECT id FROM tasks WHERE lower(status)='in_progress' LIMIT 1").fetchone()

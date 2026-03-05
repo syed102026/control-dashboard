@@ -130,6 +130,7 @@
       <button id="flowPause" title="Pause workflow">Pause</button>
       <button id="flowStop" title="Stop workflow">Stop</button>
       <span id="flowState" class="status-pill">flow: stopped</span>
+      <button id="clearLogs" class="danger" title="Clear system logs">Clear Logs</button>
       <button id="backupNow" title="Create DB backup">Backup now</button>
       <button id="restoreTask" title="Restore latest deleted task">Restore task</button>
       <button id="restoreProject" title="Restore latest deleted project">Restore project</button>
@@ -654,6 +655,16 @@ flowPause.onclick = async () => {
 flowStop.onclick = async () => {
   try { await j('/api/flow/stop', { method:'POST', body: JSON.stringify({}) }); await loadFlowState(); await loadLogs(); }
   catch (e) { alert(e.message || 'Flow stop failed'); }
+};
+
+clearLogs.onclick = async () => {
+  if(!confirm('Clear all system logs now?')) return;
+  try {
+    await j('/api/logs/clear', { method:'POST', body: JSON.stringify({}) });
+    await loadLogs();
+  } catch (e) {
+    alert(e.message || 'Failed to clear logs');
+  }
 };
 
 backupNow.onclick = async () => {
