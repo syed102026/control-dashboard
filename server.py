@@ -3,10 +3,11 @@ import json
 import sqlite3
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import urlparse
+from urllib.parse import parse_qs, urlparse
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path('/Users/openclaw/Desktop/March2026/databases/dev.db')
+LOG_DB_PATH = Path('/Users/openclaw/Desktop/March2026/databases/log.db')
 
 
 def get_conn():
@@ -14,6 +15,42 @@ def get_conn():
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA foreign_keys = ON')
     return conn
+
+
+def get_log_conn():
+    conn = sqlite3.connect(LOG_DB_PATH)
+    conn.row_factory = sqlite3.Row
+    return conn
+
+
+def ensure_log_db():
+    conn = get_log_conn()
+    try:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS work_logs (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                ts TEXT NOT NULL DEFAULT (datetime('now')),
+                agent TEXT NOT NULL,
+                level TEXT NOT NULL DEFAULT 'info',
+                message TEXT NOT NULL,
+                meta_json TEXT
+            )
+        ''')
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def add_log(agent: str, message: str, level: str = 'info', meta=None):
+    conn = get_log_conn()
+    try:
+        conn.execute(
+            'INSERT INTO work_logs (agent, level, message, meta_json) VALUES (?, ?, ?, ?)',
+            (agent or 'system', level or 'info', message, json.dumps(meta) if meta is not None else None),
+        )
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def q(sql, params=()):
@@ -41,7 +78,8 @@ class H(BaseHTTPRequestHandler):
         return json.loads(raw.decode('utf-8') or '{}')
 
     def do_GET(self):
-        p = urlparse(self.path).path
+        u = urlparse(self.path)
+        p = u.path
         if p == '/api/overview':
             total_tasks = q('select count(*) as c from tasks')[0]['c']
             completed = q("select count(*) as c from tasks where lower(status)='completed'")[0]['c']
@@ -64,6 +102,19 @@ class H(BaseHTTPRequestHandler):
                 select t.id,t.title,t.description,t.status,t.assignee,t.due_at,t.project_id,p.name as project_name,t.created_at,t.updated_at
                 from tasks t left join projects p on p.id=t.project_id order by t.id
             '''))
+        if p == '/api/logs':
+            qs = parse_qs(u.query or '')
+            limit = int((qs.get('limit') or ['150'])[0])
+            limit = max(1, min(1000, limit))
+            conn = get_log_conn()
+            try:
+                cur = conn.execute(
+                    'SELECT id, ts, agent, level, message, meta_json FROM work_logs ORDER BY id DESC LIMIT ?',
+                    (limit,),
+                )
+                return self._json([dict(r) for r in cur.fetchall()])
+            finally:
+                conn.close()
         if p == '/' or p == '/index.html':
             html = (BASE_DIR / 'index.html').read_bytes()
             self.send_response(200)
@@ -79,6 +130,15 @@ class H(BaseHTTPRequestHandler):
         body = self._read_json()
         conn = get_conn()
         try:
+            if p == '/api/logs/add':
+                add_log(
+                    agent=(body.get('agent') or 'system').strip().lower(),
+                    message=(body.get('message') or '').strip(),
+                    level=(body.get('level') or 'info').strip().lower(),
+                    meta=body.get('meta'),
+                )
+                return self._json({'ok': True})
+
             if p == '/api/categories/add':
                 name = (body.get('name') or '').strip()
                 desc = (body.get('description') or '').strip() or None
@@ -86,6 +146,7 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'error': 'name required'}, 400)
                 conn.execute('insert into categories (name, description) values (?, ?)', (name, desc))
                 conn.commit()
+                add_log('system', f'Category added: {name}')
                 return self._json({'ok': True})
 
             if p == '/api/categories/delete':
@@ -94,6 +155,7 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'error': 'ids required'}, 400)
                 conn.executemany('delete from categories where id=?', [(i,) for i in ids])
                 conn.commit()
+                add_log('system', f'Deleted {len(ids)} categorie(s)')
                 return self._json({'ok': True, 'deleted': len(ids)})
 
             if p == '/api/projects/add':
@@ -109,6 +171,7 @@ class H(BaseHTTPRequestHandler):
                     (name, category_id, status, priority),
                 )
                 conn.commit()
+                add_log('kai', f'Project added: {name}')
                 return self._json({'ok': True})
 
             if p == '/api/projects/delete':
@@ -117,6 +180,7 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'error': 'ids required'}, 400)
                 conn.executemany('delete from projects where id=?', [(i,) for i in ids])
                 conn.commit()
+                add_log('kai', f'Deleted {len(ids)} project(s)')
                 return self._json({'ok': True, 'deleted': len(ids)})
 
             if p == '/api/tasks/add':
@@ -134,6 +198,7 @@ class H(BaseHTTPRequestHandler):
                     (project_id, title, description, status, assignee, due_at),
                 )
                 conn.commit()
+                add_log((assignee or 'david').lower(), f'Task added: {title}')
                 return self._json({'ok': True})
 
             if p == '/api/tasks/delete':
@@ -142,6 +207,7 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'error': 'ids required'}, 400)
                 conn.executemany('delete from tasks where id=?', [(i,) for i in ids])
                 conn.commit()
+                add_log('david', f'Deleted {len(ids)} task(s)')
                 return self._json({'ok': True, 'deleted': len(ids)})
 
             if p == '/api/tasks/update-status':
@@ -150,8 +216,13 @@ class H(BaseHTTPRequestHandler):
                 allowed = {'plan', 'in_progress', 'review', 'approval_required', 'completed', 'blocked'}
                 if task_id in (None, '') or status not in allowed:
                     return self._json({'error': 'task_id and valid status required'}, 400)
+                task_row = conn.execute('select id,title,status,assignee from tasks where id=?', (int(task_id),)).fetchone()
+                if not task_row:
+                    return self._json({'error': 'task not found'}, 404)
                 conn.execute('update tasks set status=? where id=?', (status, int(task_id)))
                 conn.commit()
+                agent = (task_row['assignee'] or 'aran').strip().lower()
+                add_log(agent, f"Task status changed: {task_row['title'] or ('#'+str(task_row['id']))} · {task_row['status'] or '-'} → {status}")
                 return self._json({'ok': True})
 
             return self._json({'error': 'not found'}, 404)
@@ -166,6 +237,8 @@ class H(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     if not DB_PATH.exists():
         raise SystemExit(f'dev.db not found at {DB_PATH}')
+    ensure_log_db()
+    add_log('system', 'Control dashboard service started')
     srv = ThreadingHTTPServer(('127.0.0.1', 4174), H)
     print('control-dashboard running on http://127.0.0.1:4174')
     srv.serve_forever()

@@ -37,22 +37,22 @@
     }
     * { box-sizing:border-box; }
     html, body { height:100%; }
-    body { margin:0; font-family:Inter,system-ui,Arial,sans-serif; color:var(--text); background:var(--bg); overflow:hidden; }
-    .top { height:62px; border-bottom:1px solid var(--line); background:var(--card); display:flex; align-items:center; justify-content:space-between; padding:0 16px; }
+    body { margin:0; font-family:Inter,system-ui,Arial,sans-serif; color:var(--text); background:var(--bg); overflow:hidden; font-size:14px; line-height:1.35; }
+    .top { height:58px; border-bottom:1px solid var(--line); background:var(--card); display:flex; align-items:center; justify-content:space-between; padding:0 14px; }
     .title { font-weight:700; } .sub{ color:var(--muted); font-size:12px; }
     .wrap { display:grid; grid-template-columns:220px minmax(0,1fr) 340px; height:calc(100vh - 62px); overflow:hidden; }
     .left { background:var(--card); border-right:1px solid var(--line); padding:14px; overflow:auto; }
-    .main { padding:16px; overflow:auto; min-width:0; }
+    .main { padding:12px; overflow:auto; min-width:0; }
     .right { border-left:1px solid var(--line); background:var(--card); padding:12px; display:flex; flex-direction:column; min-height:0; overflow:hidden; }
     .navbtn { width:100%; text-align:left; border:1px solid transparent; background:transparent; padding:10px 12px; border-radius:10px; margin-bottom:6px; cursor:pointer; display:flex; align-items:center; gap:8px; }
     .navbtn.active { background:color-mix(in oklab, var(--accent) 15%, var(--card)); color:var(--accent); border-color:color-mix(in oklab, var(--accent) 35%, var(--line)); font-weight:600; }
-    .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; }
-    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; box-shadow:0 6px 18px rgba(15,23,42,.06); }
+    .cards { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:8px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; box-shadow:0 4px 12px rgba(15,23,42,.05); }
     .cards .card:nth-child(1){ background:linear-gradient(135deg,var(--card-a),var(--card)); }
     .cards .card:nth-child(2){ background:linear-gradient(135deg,var(--card-b),var(--card)); }
     .cards .card:nth-child(3){ background:linear-gradient(135deg,var(--card-c),var(--card)); }
     .k { font-size:12px; color:var(--muted); text-transform:uppercase; }
-    .v { font-size:30px; font-weight:700; margin-top:6px; }
+    .v { font-size:24px; font-weight:700; margin-top:4px; }
     .panel { margin-top:12px; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:auto; }
     .panel h3 { margin:0; padding:12px; border-bottom:1px solid var(--line); font-size:15px; }
     .kanban-scroll { overflow-x:auto; overflow-y:hidden; padding:6px; }
@@ -60,7 +60,7 @@
     .col { background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); border:1px solid var(--line); border-radius:10px; min-height:220px; }
     .colhead { padding:8px 10px; border-bottom:1px solid var(--line); font-size:12px; color:#334155; font-weight:700; }
     .cardtask { margin:8px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px; font-size:12px; cursor:grab; }
-    .toolbar { display:flex; gap:8px; padding:10px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
+    .toolbar { display:flex; gap:8px; padding:8px 10px; border-bottom:1px solid var(--line); flex-wrap:wrap; }
     input,select,button { border:1px solid var(--line); border-radius:8px; padding:8px; font-size:13px; background:var(--card); color:var(--text); }
     button { cursor:pointer; }
     #themeToggle { width:34px; height:34px; display:inline-flex; align-items:center; justify-content:center; border-radius:10px; border:1px solid var(--line); background:var(--card); color:var(--accent); }
@@ -70,24 +70,31 @@
     th { color:var(--muted); font-size:12px; text-transform:uppercase; }
     .muted { color:var(--muted); }
 
-    .approvalbox { border:1px solid var(--line); border-radius:10px; background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); padding:8px; margin-bottom:10px; max-height:32%; overflow:auto; }
+    .approvalbox { border:1px solid var(--line); border-radius:10px; background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); padding:8px; margin-bottom:10px; max-height:34%; overflow:auto; }
     .approvalrow { border:1px solid #dbeafe; background:#eff6ff; border-radius:8px; padding:8px; margin-bottom:8px; }
     .approvalrow .meta { color:#1d4ed8; font-size:11px; margin-bottom:6px; }
-    .feed { border:1px solid #111827; border-radius:10px; background:#0b1220; color:#d1fae5; padding:8px; flex:1; min-height:220px; overflow:auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+    .feed { border:1px solid var(--line); border-radius:10px; background:color-mix(in oklab, var(--card) 86%, var(--bg) 14%); color:var(--text); padding:8px; flex:1; min-height:220px; overflow:auto; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size:12px; }
+    body.dark .feed { border-color:#111827; background:#0b1220; color:#d1fae5; }
     .hscroll { overflow-x:auto; }
-    .msg { border-radius:8px; padding:8px 10px; margin-bottom:8px; border:1px solid #1f2937; background:#0f172a; }
-    .meta { font-size:11px; margin-bottom:4px; display:flex; align-items:center; gap:6px; }
+    .msg { border-radius:8px; padding:6px 8px; margin-bottom:6px; border:1px solid var(--line); background:var(--card); }
+    body.dark .msg { border-color:#1f2937; background:#0f172a; }
+    .meta { font-size:10px; margin-bottom:3px; display:flex; align-items:center; gap:6px; }
     .icon { width:18px; height:18px; border-radius:50%; display:inline-flex; align-items:center; justify-content:center; font-size:12px; }
     .system { border-left:3px solid #a78bfa; }
-    .system .meta { color:#c4b5fd; } .system .icon { background:#4c1d95; color:#e9d5ff; }
+    .system .meta { color:#6d28d9; } .system .icon { background:#ede9fe; color:#5b21b6; }
     .aran { border-left:3px solid var(--agent-aran); }
-    .aran .meta { color:#7dd3fc; } .aran .icon { background:#0c4a6e; color:#bae6fd; }
+    .aran .meta { color:#0369a1; } .aran .icon { background:#e0f2fe; color:#075985; }
     .david { border-left:3px solid var(--agent-david); }
-    .david .meta { color:#d9f99d; } .david .icon { background:#365314; color:#ecfccb; }
+    .david .meta { color:#3f6212; } .david .icon { background:#ecfccb; color:#365314; }
     .kai { border-left:3px solid var(--agent-kai); }
-    .kai .meta { color:#fdba74; } .kai .icon { background:#7c2d12; color:#ffedd5; }
+    .kai .meta { color:#9a3412; } .kai .icon { background:#ffedd5; color:#7c2d12; }
     .error { border-left:3px solid #f87171; }
-    .error .meta { color:#fca5a5; } .error .icon { background:#7f1d1d; color:#fee2e2; }
+    .error .meta { color:#991b1b; } .error .icon { background:#fee2e2; color:#7f1d1d; }
+    body.dark .system .meta { color:#c4b5fd; } body.dark .system .icon { background:#4c1d95; color:#e9d5ff; }
+    body.dark .aran .meta { color:#7dd3fc; } body.dark .aran .icon { background:#0c4a6e; color:#bae6fd; }
+    body.dark .david .meta { color:#d9f99d; } body.dark .david .icon { background:#365314; color:#ecfccb; }
+    body.dark .kai .meta { color:#fdba74; } body.dark .kai .icon { background:#7c2d12; color:#ffedd5; }
+    body.dark .error .meta { color:#fca5a5; } body.dark .error .icon { background:#7f1d1d; color:#fee2e2; }
 
     .agent-box { margin-top:12px; border:1px solid var(--line); border-radius:10px; padding:8px; background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); }
     .agent-row { display:flex; justify-content:space-between; align-items:center; padding:7px 8px; border:1px solid var(--line); border-radius:8px; margin-bottom:6px; background:var(--card); font-size:12px; }
@@ -206,7 +213,7 @@
   </div>
 
 <script>
-const state = { categories:[], projects:[], tasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false };
+const state = { categories:[], projects:[], tasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false, logCursor:0 };
 const selected = { categories:new Set(), projects:new Set(), tasks:new Set() };
 const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // Core workflow columns used across the drag/drop Kanban
@@ -229,11 +236,13 @@ function agentKeyFromAssignee(a){
   return 'system';
 }
 
-function logEvent(agent, message){
-  const a = AGENT_STYLE[agent] || AGENT_STYLE.system;
-  state.events.unshift({ agent:a, message, ts:new Date().toLocaleTimeString() });
-  state.events = state.events.slice(0, 150);
-  renderFeed();
+async function logEvent(agent, message, level='info', meta=null){
+  try{
+    await j('/api/logs/add', {method:'POST', body:JSON.stringify({agent, message, level, meta})});
+    await loadLogs();
+  }catch(_e){
+    // Avoid breaking UI flow on logging issues
+  }
 }
 
 function renderFeed(){
@@ -243,6 +252,17 @@ function renderFeed(){
       <div>${esc(e.message)}</div>
     </div>
   `).join('') || '<p class="muted">Waiting for logs…</p>';
+}
+
+async function loadLogs(){
+  const logs = await j('/api/logs?limit=150');
+  state.events = logs.map(r => {
+    const key = String(r.agent || 'system').toLowerCase();
+    const style = AGENT_STYLE[key] || AGENT_STYLE.system;
+    const ts = r.ts ? new Date(String(r.ts).replace(' ', 'T')).toLocaleTimeString() : new Date().toLocaleTimeString();
+    return { agent:style, message:r.message, ts };
+  });
+  renderFeed();
 }
 
 async function j(url, opt={}){ const r = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opt}); const d = await r.json(); if(!r.ok) throw new Error(d.error || ('HTTP '+r.status)); return d; }
@@ -429,6 +449,7 @@ function render(){
 
 async function load(){
   const [overview,categoriesData,projectsData,tasksData] = await Promise.all([ j('/api/overview'), j('/api/categories'), j('/api/projects'), j('/api/tasks') ]);
+  await loadLogs();
   kTotalTasks.textContent = overview.total_tasks;
   kCompletePct.textContent = overview.complete_percentage + '%';
   kPendingApproval.textContent = overview.pending_approval;
