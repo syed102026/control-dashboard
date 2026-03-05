@@ -126,6 +126,9 @@
       <div class="sub">Synced with dev.db</div>
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
+      <button id="backupNow" title="Create DB backup">Backup now</button>
+      <button id="restoreTask" title="Restore latest deleted task">Restore task</button>
+      <button id="restoreProject" title="Restore latest deleted project">Restore project</button>
       <button id="themeToggle" title="Toggle theme" aria-label="Toggle theme"></button>
       <div class="sub" id="updated">Updated —</div>
     </div>
@@ -213,7 +216,7 @@
   </div>
 
 <script>
-const state = { categories:[], projects:[], tasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false, logCursor:0, loading:false };
+const state = { categories:[], projects:[], tasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false, logCursor:0, loading:false, eventSeq:-1 };
 const selected = { categories:new Set(), projects:new Set(), tasks:new Set() };
 const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // Core workflow columns used across the drag/drop Kanban
@@ -502,6 +505,34 @@ async function approveTask(taskId, targetStatus){
 }
 window.approveTask = approveTask;
 
+backupNow.onclick = async () => {
+  try {
+    const res = await j('/api/backup/create', { method:'POST', body: JSON.stringify({}) });
+    alert(`Backup created:\n${res.backup.dev}`);
+    await loadLogs();
+  } catch (e) {
+    logEvent('error', e.message || 'Backup failed');
+  }
+};
+
+restoreTask.onclick = async () => {
+  try {
+    await j('/api/tasks/restore-latest', { method:'POST', body: JSON.stringify({}) });
+    await load();
+  } catch (e) {
+    alert(e.message || 'No deleted task to restore');
+  }
+};
+
+restoreProject.onclick = async () => {
+  try {
+    await j('/api/projects/restore-latest', { method:'POST', body: JSON.stringify({}) });
+    await load();
+  } catch (e) {
+    alert(e.message || 'No deleted project to restore');
+  }
+};
+
 [projFilterText, projFilterStatus, taskFilterText, taskFilterStatus, taskFilterAssignee].forEach(el => {
   if(!el) return;
   el.addEventListener('input', render);
@@ -529,10 +560,26 @@ if(themeBtn){
 }
 
 load().catch(e => logEvent('error', e.message));
+
+// Server-sent events for near real-time updates; polling kept as fallback.
+try {
+  const es = new EventSource('/api/events');
+  es.onmessage = (evt) => {
+    try {
+      const d = JSON.parse(evt.data || '{}');
+      if (typeof d.seq === 'number' && d.seq !== state.eventSeq) {
+        state.eventSeq = d.seq;
+        load().catch(() => {});
+      }
+    } catch(_) {}
+  };
+  es.onerror = () => {};
+} catch(_) {}
+
 setInterval(() => {
   if (document.hidden) return;
   load().catch(e => logEvent('error', e.message));
-}, 5000);
+}, 15000);
 </script>
 </body>
 </html>

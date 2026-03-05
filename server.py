@@ -1,6 +1,9 @@
 #!/usr/bin/env python3
 import json
+import shutil
 import sqlite3
+import time
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
@@ -8,6 +11,7 @@ from urllib.parse import parse_qs, urlparse
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = Path('/Users/openclaw/Desktop/March2026/databases/dev.db')
 LOG_DB_PATH = Path('/Users/openclaw/Desktop/March2026/databases/log.db')
+BACKUP_DIR = Path('/Users/openclaw/Desktop/March2026/databases/backups')
 
 STATUS_ALIASES = {
     'todo': 'plan',
@@ -16,6 +20,13 @@ STATUS_ALIASES = {
     'working': 'in_progress',
 }
 ALLOWED_STATUS = {'plan', 'in_progress', 'review', 'approval_required', 'completed', 'blocked'}
+
+EVENT_SEQ = 0
+
+
+def bump_event_seq():
+    global EVENT_SEQ
+    EVENT_SEQ += 1
 
 
 def normalize_status(value: str, default: str = 'plan') -> str:
@@ -39,6 +50,43 @@ def get_log_conn():
     conn = sqlite3.connect(LOG_DB_PATH)
     conn.row_factory = sqlite3.Row
     return conn
+
+
+def ensure_dev_db():
+    conn = get_conn()
+    try:
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS deleted_tasks (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_id INTEGER,
+                project_id INTEGER,
+                title TEXT,
+                description TEXT,
+                status TEXT,
+                assignee TEXT,
+                due_at TEXT,
+                created_at TEXT,
+                updated_at TEXT,
+                deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS deleted_projects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                original_id INTEGER,
+                category_id INTEGER,
+                name TEXT,
+                status TEXT,
+                priority INTEGER,
+                created_at TEXT,
+                updated_at TEXT,
+                description TEXT,
+                deleted_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        ''')
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def ensure_log_db():
@@ -65,14 +113,13 @@ def add_log(agent: str, message: str, level: str = 'info', meta=None):
         return
     conn = get_log_conn()
     try:
-        # local dedupe window: skip exact same log from same agent/level in last 2 seconds
         row = conn.execute(
-            """
+            '''
             SELECT id FROM work_logs
             WHERE agent=? AND level=? AND message=?
               AND ts >= datetime('now', '-2 seconds')
             ORDER BY id DESC LIMIT 1
-            """,
+            ''',
             ((agent or 'system').strip().lower(), (level or 'info').strip().lower(), msg),
         ).fetchone()
         if row:
@@ -82,14 +129,13 @@ def add_log(agent: str, message: str, level: str = 'info', meta=None):
             'INSERT INTO work_logs (agent, level, message, meta_json) VALUES (?, ?, ?, ?)',
             ((agent or 'system').strip().lower(), (level or 'info').strip().lower(), msg, json.dumps(meta) if meta is not None else None),
         )
-        # retention cap for local use
         conn.execute(
-            """
+            '''
             DELETE FROM work_logs
             WHERE id NOT IN (
               SELECT id FROM work_logs ORDER BY id DESC LIMIT 2000
             )
-            """
+            '''
         )
         conn.commit()
     finally:
@@ -103,6 +149,17 @@ def q(sql, params=()):
         return [dict(r) for r in cur.fetchall()]
     finally:
         conn.close()
+
+
+def create_backup():
+    BACKUP_DIR.mkdir(parents=True, exist_ok=True)
+    ts = datetime.now().strftime('%Y%m%d-%H%M%S')
+    dev_out = BACKUP_DIR / f'dev-{ts}.db'
+    log_out = BACKUP_DIR / f'log-{ts}.db'
+    shutil.copy2(DB_PATH, dev_out)
+    if LOG_DB_PATH.exists():
+        shutil.copy2(LOG_DB_PATH, log_out)
+    return {'timestamp': ts, 'dev': str(dev_out), 'log': str(log_out)}
 
 
 class H(BaseHTTPRequestHandler):
@@ -123,6 +180,25 @@ class H(BaseHTTPRequestHandler):
     def do_GET(self):
         u = urlparse(self.path)
         p = u.path
+        if p == '/api/events':
+            self.send_response(200)
+            self.send_header('Content-Type', 'text/event-stream')
+            self.send_header('Cache-Control', 'no-cache')
+            self.send_header('Connection', 'keep-alive')
+            self.end_headers()
+            last = -1
+            try:
+                while True:
+                    if EVENT_SEQ != last:
+                        last = EVENT_SEQ
+                        self.wfile.write(f"data: {json.dumps({'seq': last, 'ts': datetime.now().isoformat()})}\n\n".encode())
+                    else:
+                        self.wfile.write(b': ping\n\n')
+                    self.wfile.flush()
+                    time.sleep(2)
+            except Exception:
+                return
+
         if p == '/api/overview':
             total_tasks = q('select count(*) as c from tasks')[0]['c']
             completed = q("select count(*) as c from tasks where lower(status) in ('completed','done','complete')")[0]['c']
@@ -159,6 +235,11 @@ class H(BaseHTTPRequestHandler):
             for r in rows:
                 r['status'] = valid_status(r.get('status') or 'plan')
             return self._json(rows)
+        if p == '/api/trash':
+            return self._json({
+                'deleted_tasks': q('select id,original_id,title,project_id,deleted_at from deleted_tasks order by id desc limit 20'),
+                'deleted_projects': q('select id,original_id,name,deleted_at from deleted_projects order by id desc limit 20'),
+            })
         if p == '/api/logs':
             qs = parse_qs(u.query or '')
             limit = int((qs.get('limit') or ['150'])[0])
@@ -196,7 +277,14 @@ class H(BaseHTTPRequestHandler):
                     level=(body.get('level') or 'info').strip().lower(),
                     meta=body.get('meta'),
                 )
+                bump_event_seq()
                 return self._json({'ok': True})
+
+            if p == '/api/backup/create':
+                out = create_backup()
+                add_log('system', f"Backup created: {Path(out['dev']).name}")
+                bump_event_seq()
+                return self._json({'ok': True, 'backup': out})
 
             if p == '/api/categories/add':
                 name = (body.get('name') or '').strip()
@@ -206,6 +294,7 @@ class H(BaseHTTPRequestHandler):
                 conn.execute('insert into categories (name, description) values (?, ?)', (name, desc))
                 conn.commit()
                 add_log('system', f'Category added: {name}')
+                bump_event_seq()
                 return self._json({'ok': True})
 
             if p == '/api/categories/delete':
@@ -215,6 +304,7 @@ class H(BaseHTTPRequestHandler):
                 conn.executemany('delete from categories where id=?', [(i,) for i in ids])
                 conn.commit()
                 add_log('system', f'Deleted {len(ids)} categorie(s)')
+                bump_event_seq()
                 return self._json({'ok': True, 'deleted': len(ids)})
 
             if p == '/api/projects/add':
@@ -231,16 +321,39 @@ class H(BaseHTTPRequestHandler):
                 )
                 conn.commit()
                 add_log('kai', f'Project added: {name}')
+                bump_event_seq()
                 return self._json({'ok': True})
 
             if p == '/api/projects/delete':
                 ids = [int(x) for x in (body.get('ids') or [])]
                 if not ids:
                     return self._json({'error': 'ids required'}, 400)
+                for i in ids:
+                    row = conn.execute('select * from projects where id=?', (i,)).fetchone()
+                    if row:
+                        conn.execute('''
+                            insert into deleted_projects(original_id, category_id, name, status, priority, created_at, updated_at, description)
+                            values(?,?,?,?,?,?,?,?)
+                        ''', (row['id'], row['category_id'], row['name'], row['status'], row['priority'], row['created_at'], row['updated_at'], row['description']))
                 conn.executemany('delete from projects where id=?', [(i,) for i in ids])
                 conn.commit()
                 add_log('kai', f'Deleted {len(ids)} project(s)')
+                bump_event_seq()
                 return self._json({'ok': True, 'deleted': len(ids)})
+
+            if p == '/api/projects/restore-latest':
+                row = conn.execute('select * from deleted_projects order by id desc limit 1').fetchone()
+                if not row:
+                    return self._json({'error': 'no deleted project to restore'}, 404)
+                conn.execute('''
+                    insert into projects (category_id, name, status, priority, created_at, updated_at, description)
+                    values (?, ?, ?, ?, datetime('now'), datetime('now'), ?)
+                ''', (row['category_id'], row['name'], valid_status(row['status']), row['priority'] or 3, row['description']))
+                conn.execute('delete from deleted_projects where id=?', (row['id'],))
+                conn.commit()
+                add_log('kai', f"Project restored: {row['name']}")
+                bump_event_seq()
+                return self._json({'ok': True})
 
             if p == '/api/tasks/add':
                 title = (body.get('title') or '').strip()
@@ -258,16 +371,39 @@ class H(BaseHTTPRequestHandler):
                 )
                 conn.commit()
                 add_log((assignee or 'david').lower(), f'Task added: {title}')
+                bump_event_seq()
                 return self._json({'ok': True})
 
             if p == '/api/tasks/delete':
                 ids = [int(x) for x in (body.get('ids') or [])]
                 if not ids:
                     return self._json({'error': 'ids required'}, 400)
+                for i in ids:
+                    row = conn.execute('select * from tasks where id=?', (i,)).fetchone()
+                    if row:
+                        conn.execute('''
+                            insert into deleted_tasks(original_id, project_id, title, description, status, assignee, due_at, created_at, updated_at)
+                            values(?,?,?,?,?,?,?,?,?)
+                        ''', (row['id'], row['project_id'], row['title'], row['description'], row['status'], row['assignee'], row['due_at'], row['created_at'], row['updated_at']))
                 conn.executemany('delete from tasks where id=?', [(i,) for i in ids])
                 conn.commit()
                 add_log('david', f'Deleted {len(ids)} task(s)')
+                bump_event_seq()
                 return self._json({'ok': True, 'deleted': len(ids)})
+
+            if p == '/api/tasks/restore-latest':
+                row = conn.execute('select * from deleted_tasks order by id desc limit 1').fetchone()
+                if not row:
+                    return self._json({'error': 'no deleted task to restore'}, 404)
+                conn.execute('''
+                    insert into tasks (project_id, title, description, status, assignee, due_at, created_at, updated_at)
+                    values (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                ''', (row['project_id'], row['title'], row['description'], valid_status(row['status']), row['assignee'], row['due_at']))
+                conn.execute('delete from deleted_tasks where id=?', (row['id'],))
+                conn.commit()
+                add_log('david', f"Task restored: {row['title']}")
+                bump_event_seq()
+                return self._json({'ok': True})
 
             if p == '/api/tasks/update-status':
                 task_id = body.get('task_id')
@@ -281,6 +417,7 @@ class H(BaseHTTPRequestHandler):
                 conn.commit()
                 agent = (task_row['assignee'] or 'aran').strip().lower()
                 add_log(agent, f"Task status changed: {task_row['title'] or ('#'+str(task_row['id']))} · {task_row['status'] or '-'} → {status}")
+                bump_event_seq()
                 return self._json({'ok': True})
 
             return self._json({'error': 'not found'}, 404)
@@ -295,6 +432,7 @@ class H(BaseHTTPRequestHandler):
 if __name__ == '__main__':
     if not DB_PATH.exists():
         raise SystemExit(f'dev.db not found at {DB_PATH}')
+    ensure_dev_db()
     ensure_log_db()
     add_log('system', 'Control dashboard service started')
     srv = ThreadingHTTPServer(('127.0.0.1', 4174), H)
