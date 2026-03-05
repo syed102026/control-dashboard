@@ -270,6 +270,20 @@ const AGENT_STYLE = {
   error:{cls:'error', icon:'⚠️', name:'Error'}
 };
 
+const AGENT_PROFILE = {
+  Atlas:{team:'Atlas', role:'Central Orchestrator / CEO', avatar:'🧭'},
+  Aran:{team:'SaaS Team', role:'Architect', avatar:'🧠'},
+  David:{team:'SaaS Team', role:'Developer', avatar:'🛠️'},
+  Quinn:{team:'SaaS Team', role:'QA Engineer', avatar:'✅'},
+  Kai:{team:'SaaS Team', role:'Deployment / Infra', avatar:'🚀'},
+  Jerry:{team:'Research Team', role:'Research Lead', avatar:'📚'},
+  Nikola:{team:'Research Team', role:'Theory Analyst', avatar:'🧪'},
+  Albert:{team:'Research Team', role:'Experiments', avatar:'🔬'},
+  Warren:{team:'Business Team', role:'Strategy', avatar:'📈'},
+  Steve:{team:'Business Team', role:'Product', avatar:'🧩'},
+  Philip:{team:'Business Team', role:'Growth', avatar:'📣'}
+};
+
 function agentKeyFromAssignee(a){
   const v=(a||'').toLowerCase().trim();
   if(v==='aran') return 'aran';
@@ -398,7 +412,38 @@ function renderTasksTable(rows){
 
 function renderAgentsCrm(){
   if(!state.agentsSummary.length){ agentsCrm.innerHTML='<p class="muted" style="padding:10px">No agent data</p>'; return; }
-  agentsCrm.innerHTML = `<table><thead><tr><th>Agent</th><th>In Progress</th><th>Review</th><th>Blocked</th><th>Completed</th><th>Last Activity</th></tr></thead><tbody>${state.agentsSummary.map(a=>`<tr><td>${esc(a.agent)}</td><td>${a.in_progress}</td><td>${a.review}</td><td>${a.blocked}</td><td>${a.completed}</td><td title="${esc(a.last_activity||'')}">${esc(a.last_activity_at||'-')}</td></tr>`).join('')}</tbody></table>`;
+  const byTeam = { 'Atlas': [], 'SaaS Team': [], 'Research Team': [], 'Business Team': [] };
+  state.agentsSummary.forEach(a => {
+    const p = AGENT_PROFILE[a.agent] || { team:'Atlas', role:'Agent', avatar:'👤' };
+    byTeam[p.team] = byTeam[p.team] || [];
+    byTeam[p.team].push({ ...a, role: p.role, avatar: p.avatar });
+  });
+
+  agentsCrm.innerHTML = Object.entries(byTeam).map(([team, list]) => `
+    <div class="card" style="margin-bottom:10px;">
+      <div style="font-weight:700; margin-bottom:8px;">${esc(team)}</div>
+      <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(240px,1fr)); gap:8px;">
+        ${list.map(a => `
+          <div class="agent-row" style="display:block;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span class="avatar ${a.agent==='Aran'?'aran':a.agent==='David'?'david':a.agent==='Kai'?'kai':'system'}" style="width:28px;height:28px;font-size:14px;">${a.avatar}</span>
+              <div>
+                <div style="font-weight:600;">${esc(a.agent)}</div>
+                <div class="muted" style="font-size:11px;">${esc(a.role)}</div>
+              </div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px;font-size:11px;">
+              <span class="status-pill">WIP ${a.in_progress}</span>
+              <span class="status-pill">Review ${a.review}</span>
+              <span class="status-pill">Blocked ${a.blocked}</span>
+              <span class="status-pill">Done ${a.completed}</span>
+            </div>
+            <div class="muted" style="font-size:10px;margin-top:6px;" title="${esc(a.last_activity||'')}">Last: ${esc(a.last_activity_at||'-')}</div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `).join('');
 }
 
 function renderHandoffs(){
