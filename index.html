@@ -56,7 +56,7 @@
     .panel { margin-top:12px; background:var(--card); border:1px solid var(--line); border-radius:12px; overflow:auto; }
     .panel h3 { margin:0; padding:12px; border-bottom:1px solid var(--line); font-size:15px; }
     .kanban-scroll { overflow-x:auto; overflow-y:hidden; padding:6px; }
-    .kanban { display:grid; grid-template-columns:repeat(6,260px); gap:10px; min-width:max-content; }
+    .kanban { display:grid; grid-template-columns:repeat(7,260px); gap:10px; min-width:max-content; }
     .col { background:color-mix(in oklab, var(--card) 88%, var(--bg) 12%); border:1px solid var(--line); border-radius:10px; min-height:220px; }
     .colhead { padding:8px 10px; border-bottom:1px solid var(--line); font-size:12px; color:#334155; font-weight:700; }
     .cardtask { margin:8px; background:var(--card); border:1px solid var(--line); border-radius:10px; padding:8px; font-size:12px; cursor:grab; }
@@ -206,7 +206,14 @@
             <select id="taskFilterStatus"><option value="">All status</option><option value="plan">plan</option><option value="in_progress">in_progress</option><option value="review">review</option><option value="approval_required">approval_required</option><option value="completed">completed</option><option value="blocked">blocked</option></select>
             <select id="taskFilterAssignee"><option value="">All assignees</option><option value="Aran">Aran</option><option value="David">David</option><option value="Kai">Kai</option><option value="">Unassigned</option></select>
           </div>
-          <div id="tasks" class="hscroll"></div></div>
+          <div id="tasks" class="hscroll"></div>
+          <div class="toolbar" style="border-top:1px solid var(--line); margin-top:8px;">
+            <strong>Deleted Tasks</strong>
+            <button id="restoreDeletedTasks">Restore selected</button>
+            <button class="danger" id="purgeDeletedTasks">Delete selected permanently</button>
+          </div>
+          <div id="deletedTasks" class="hscroll"></div>
+        </div>
       </section>
     </main>
 
@@ -220,8 +227,8 @@
   </div>
 
 <script>
-const state = { categories:[], projects:[], tasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false, logCursor:0, loading:false, eventSeq:-1 };
-const selected = { categories:new Set(), projects:new Set(), tasks:new Set() };
+const state = { categories:[], projects:[], tasks:[], deletedTasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false, logCursor:0, loading:false, eventSeq:-1 };
+const selected = { categories:new Set(), projects:new Set(), tasks:new Set(), deletedTasks:new Set() };
 const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // Core workflow columns used across the drag/drop Kanban
 const KANBAN_COLS = ['plan','in_progress','review','approval_required','completed','blocked'];
@@ -367,6 +374,17 @@ function renderKanban(){
     const s = (t.status || 'plan').toLowerCase();
     grouped[grouped[s] ? s : 'plan'].push(t);
   });
+  const deletedCol = `
+    <div class="col" data-status="deleted">
+      <div class="colhead">Deleted (${state.deletedTasks.length})</div>
+      ${state.deletedTasks.map(t => `
+        <div class="cardtask" style="cursor:default; opacity:.9" draggable="false">
+          <div><b>${esc(t.title || ('Deleted #'+t.id))}</b></div>
+          <div class="muted">${esc(t.project_name || '-')} • ${assigneeBadge(t.assignee)}</div>
+        </div>
+      `).join('')}
+    </div>
+  `;
   kanban.innerHTML = KANBAN_COLS.map(s => `
     <div class="col" data-status="${s}">
       <div class="colhead">${KANBAN_LABEL[s]} (${grouped[s].length})</div>
@@ -377,7 +395,7 @@ function renderKanban(){
         </div>
       `).join('')}
     </div>
-  `).join('');
+  `).join('') + deletedCol;
 
   document.querySelectorAll('.cardtask').forEach(el => {
     el.addEventListener('dragstart', e => {
@@ -455,6 +473,8 @@ function render(){
   });
   renderTasksTable(filteredTasks);
 
+  renderTable(deletedTasks, state.deletedTasks, 'deletedTasks');
+
   renderKanban();
   renderApprovals();
   renderAgentsStatus();
@@ -466,17 +486,17 @@ async function load(){
   if(state.loading) return;
   state.loading = true;
   try {
-    const [overview,categoriesData,projectsData,tasksData] = await Promise.all([ j('/api/overview'), j('/api/categories'), j('/api/projects'), j('/api/tasks') ]);
+    const [overview,categoriesData,projectsData,tasksData,deletedTasksData] = await Promise.all([ j('/api/overview'), j('/api/categories'), j('/api/projects'), j('/api/tasks'), j('/api/deleted-tasks') ]);
     await Promise.all([loadLogs(), loadFlowState()]);
   kTotalTasks.textContent = overview.total_tasks;
   kCompletePct.textContent = overview.complete_percentage + '%';
   kPendingApproval.textContent = overview.pending_approval;
 
-  state.categories = categoriesData; state.projects = projectsData; state.tasks = tasksData;
+  state.categories = categoriesData; state.projects = projectsData; state.tasks = tasksData; state.deletedTasks = deletedTasksData;
   const inProgressNow = state.tasks.filter(t => (t.status||'').toLowerCase()==='in_progress').length;
   // Runtime count changes are reflected by server logs and overview cards.
   state.prevInProgress = inProgressNow;
-  selected.categories.clear(); selected.projects.clear(); selected.tasks.clear();
+  selected.categories.clear(); selected.projects.clear(); selected.tasks.clear(); selected.deletedTasks.clear();
   render();
   if(!state.bootstrapped){
     state.prevCategories = state.categories.map(c => ({id:c.id, name:c.name}));
@@ -503,6 +523,8 @@ delProjs.onclick = async () => { if(!selected.projects.size) return alert('Selec
 
 addTask.onclick = async () => { try{ await j('/api/tasks/add',{method:'POST',body:JSON.stringify({title:taskTitle.value,project_id:taskProject.value,status:taskStatus.value,assignee:taskAssignee.value})}); taskTitle.value=''; taskAssignee.value=''; await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
 delTasks.onclick = async () => { if(!selected.tasks.size) return alert('Select task rows first'); if(!confirm('Delete selected tasks?')) return; try{ await j('/api/tasks/delete',{method:'POST',body:JSON.stringify({ids:[...selected.tasks]})}); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+restoreDeletedTasks.onclick = async () => { if(!selected.deletedTasks.size) return alert('Select deleted task rows first'); try{ await j('/api/deleted-tasks/restore',{method:'POST',body:JSON.stringify({ids:[...selected.deletedTasks]})}); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+purgeDeletedTasks.onclick = async () => { if(!selected.deletedTasks.size) return alert('Select deleted task rows first'); if(!confirm('Permanently delete selected deleted tasks?')) return; try{ await j('/api/deleted-tasks/purge',{method:'POST',body:JSON.stringify({ids:[...selected.deletedTasks]})}); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
 
 async function approveTask(taskId, targetStatus){
   try{

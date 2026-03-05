@@ -272,6 +272,19 @@ class H(BaseHTTPRequestHandler):
                 'deleted_tasks': q('select id,original_id,title,project_id,deleted_at from deleted_tasks order by id desc limit 20'),
                 'deleted_projects': q('select id,original_id,name,deleted_at from deleted_projects order by id desc limit 20'),
             })
+        if p == '/api/deleted-tasks':
+            qs = parse_qs(u.query or '')
+            limit = max(1, min(5000, int((qs.get('limit') or ['2000'])[0])))
+            offset = max(0, int((qs.get('offset') or ['0'])[0]))
+            rows = q('''
+                select dt.id, dt.original_id, dt.project_id, p.name as project_name, dt.title, dt.status, dt.assignee, dt.deleted_at
+                from deleted_tasks dt
+                left join projects p on p.id = dt.project_id
+                order by dt.id desc limit ? offset ?
+            ''', (limit, offset))
+            for r in rows:
+                r['status'] = valid_status(r.get('status') or 'plan')
+            return self._json(rows)
         if p == '/api/logs':
             qs = parse_qs(u.query or '')
             limit = int((qs.get('limit') or ['150'])[0])
@@ -465,6 +478,36 @@ class H(BaseHTTPRequestHandler):
                 add_log('david', f"Task restored: {row['title']}")
                 bump_event_seq()
                 return self._json({'ok': True})
+
+            if p == '/api/deleted-tasks/purge':
+                ids = [int(x) for x in (body.get('ids') or [])]
+                if not ids:
+                    return self._json({'error': 'ids required'}, 400)
+                conn.executemany('delete from deleted_tasks where id=?', [(i,) for i in ids])
+                conn.commit()
+                add_log('system', f'Purged {len(ids)} deleted task(s) permanently')
+                bump_event_seq()
+                return self._json({'ok': True, 'deleted': len(ids)})
+
+            if p == '/api/deleted-tasks/restore':
+                ids = [int(x) for x in (body.get('ids') or [])]
+                if not ids:
+                    return self._json({'error': 'ids required'}, 400)
+                restored = 0
+                for i in ids:
+                    row = conn.execute('select * from deleted_tasks where id=?', (i,)).fetchone()
+                    if not row:
+                        continue
+                    conn.execute('''
+                        insert into tasks (project_id, title, description, status, assignee, due_at, created_at, updated_at)
+                        values (?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+                    ''', (row['project_id'], row['title'], row['description'], valid_status(row['status']), row['assignee'], row['due_at']))
+                    conn.execute('delete from deleted_tasks where id=?', (row['id'],))
+                    restored += 1
+                conn.commit()
+                add_log('david', f'Restored {restored} deleted task(s)')
+                bump_event_seq()
+                return self._json({'ok': True, 'restored': restored})
 
             if p == '/api/tasks/update-status':
                 task_id = body.get('task_id')
