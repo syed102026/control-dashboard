@@ -1,13 +1,11 @@
 # Task List Snapshot
 
-Generated: 2026-03-05 06:16:20
+Generated: 2026-03-05 06:18:16
 
 Total tasks: 40
 
-## plan (3)
+## plan (1)
 - [#3] Implement QR create/read API — Dynamic QR code generator MVP · David
-- [#6] Define barcode formats for MVP — Bar code Genrator MVP · Aran
-- [#8] Create project dashboard UI — Bar code Genrator MVP · David
 
 ## in_progress (13)
 - [#1] Define user stories & acceptance criteria — Dynamic QR code generator MVP · Aran
@@ -24,11 +22,10 @@ Total tasks: 40
 - [#37] Implement core backend APIs — Proposal Generator for Freelancers · David
 - [#38] Build frontend MVP screens — Proposal Generator for Freelancers · Kai
 
-## review (21)
+## review (20)
 - [#2] Design DB schema for QR entities — Dynamic QR code generator MVP · David
 - [#4] Build redirect + scan tracking — Dynamic QR code generator MVP · Kai
 - [#5] QA smoke test & release checklist — Dynamic QR code generator MVP · Kai
-- [#10] Sprint review + backlog grooming — Bar code Genrator MVP · Aran
 - [#15] QA against PRD acceptance criteria — SaaS Boilerplate Kit · Kai
 - [#17] PRD review & scope lock — Email Signature Builder · Aran
 - [#18] Architecture and schema setup — Email Signature Builder · David
@@ -49,7 +46,10 @@ Total tasks: 40
 
 ## approval_required (0)
 
-## completed (3)
+## completed (6)
+- [#6] Define barcode formats for MVP — Bar code Genrator MVP · Aran
+- [#8] Create project dashboard UI — Bar code Genrator MVP · David
+- [#10] Sprint review + backlog grooming — Bar code Genrator MVP · Aran
 - [#11] PRD review & scope lock — SaaS Boilerplate Kit · Aran
 - [#12] Architecture and schema setup — SaaS Boilerplate Kit · David
 - [#16] Production readiness + GitHub release — SaaS Boilerplate Kit · Aran

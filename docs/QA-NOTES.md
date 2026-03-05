@@ -17,3 +17,8 @@ Generated: 2026-03-05 06:16:20
 ## Follow-up QA
 - Add automated regression check for `/api/logs` payload schema.
 - Add UI indicator for log DB connectivity state (healthy/degraded).
+
+## Incremental QA (2026-03-05 06:18:16)
+- Completed documentation artifacts for Task #6 and Task #10 under `docs/tasks/`.
+- Updated dashboard statuses via API to `completed` for Task #6 and #10.
+- Verified API responses returned `ok:true` for both transitions.
