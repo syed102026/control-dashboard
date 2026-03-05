@@ -213,7 +213,7 @@
   </div>
 
 <script>
-const state = { categories:[], projects:[], tasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false, logCursor:0 };
+const state = { categories:[], projects:[], tasks:[], prevTasks:[], prevCategories:[], prevProjects:[], events:[], prevInProgress:-1, bootstrapped:false, logCursor:0, loading:false };
 const selected = { categories:new Set(), projects:new Set(), tasks:new Set() };
 const esc = s => String(s ?? '').replace(/[&<>\"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 // Core workflow columns used across the drag/drop Kanban
@@ -377,7 +377,6 @@ function renderKanban(){
       if(!taskId || !newStatus) return;
       try {
         await j('/api/tasks/update-status', {method:'POST', body:JSON.stringify({task_id:Number(taskId), status:newStatus})});
-        logEvent('aran', `Kanban move: Task #${taskId} → ${newStatus}`);
         await load();
       } catch(err) {
         logEvent('error', err.message || 'Kanban update failed');
@@ -448,17 +447,18 @@ function render(){
 }
 
 async function load(){
-  const [overview,categoriesData,projectsData,tasksData] = await Promise.all([ j('/api/overview'), j('/api/categories'), j('/api/projects'), j('/api/tasks') ]);
-  await loadLogs();
+  if(state.loading) return;
+  state.loading = true;
+  try {
+    const [overview,categoriesData,projectsData,tasksData] = await Promise.all([ j('/api/overview'), j('/api/categories'), j('/api/projects'), j('/api/tasks') ]);
+    await loadLogs();
   kTotalTasks.textContent = overview.total_tasks;
   kCompletePct.textContent = overview.complete_percentage + '%';
   kPendingApproval.textContent = overview.pending_approval;
 
   state.categories = categoriesData; state.projects = projectsData; state.tasks = tasksData;
   const inProgressNow = state.tasks.filter(t => (t.status||'').toLowerCase()==='in_progress').length;
-  if(state.prevInProgress !== -1 && state.prevInProgress !== inProgressNow){
-    logEvent('system', `Live runtime: ${inProgressNow} task(s) currently in progress.`);
-  }
+  // Runtime count changes are reflected by server logs and overview cards.
   state.prevInProgress = inProgressNow;
   selected.categories.clear(); selected.projects.clear(); selected.tasks.clear();
   render();
@@ -467,22 +467,26 @@ async function load(){
     state.prevProjects = state.projects.map(p => ({id:p.id, name:p.name}));
     state.prevTasks = state.tasks.map(t => ({id:t.id, status:t.status, assignee:t.assignee, title:t.title}));
     state.bootstrapped = true;
-    logEvent('system', `Live feed connected. Running now: ${inProgressNow} in-progress task(s).`);
   } else {
-    detectStructureEvents();
-    detectRealtimeTaskEvents();
+    // Avoid client-side event replay logging noise; server is source of truth for logs.
+    state.prevCategories = state.categories.map(c => ({id:c.id, name:c.name}));
+    state.prevProjects = state.projects.map(p => ({id:p.id, name:p.name}));
+    state.prevTasks = state.tasks.map(t => ({id:t.id, status:t.status, assignee:t.assignee, title:t.title}));
   }
   updated.textContent = 'Updated ' + new Date().toLocaleString();
+  } finally {
+    state.loading = false;
+  }
 }
 
-addCat.onclick = async () => { try{ await j('/api/categories/add',{method:'POST',body:JSON.stringify({name:catName.value,description:catDesc.value})}); logEvent('system', `Category added: ${catName.value}`); catName.value=''; catDesc.value=''; await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
-delCats.onclick = async () => { if(!selected.categories.size) return alert('Select category rows first'); if(!confirm('Delete selected categories?')) return; try{ await j('/api/categories/delete',{method:'POST',body:JSON.stringify({ids:[...selected.categories]})}); logEvent('system', `Deleted ${selected.categories.size} categories`); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+addCat.onclick = async () => { try{ await j('/api/categories/add',{method:'POST',body:JSON.stringify({name:catName.value,description:catDesc.value})}); catName.value=''; catDesc.value=''; await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+delCats.onclick = async () => { if(!selected.categories.size) return alert('Select category rows first'); if(!confirm('Delete selected categories?')) return; try{ await j('/api/categories/delete',{method:'POST',body:JSON.stringify({ids:[...selected.categories]})}); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
 
-addProj.onclick = async () => { try{ await j('/api/projects/add',{method:'POST',body:JSON.stringify({name:projName.value,category_id:projCategory.value||null,status:projStatus.value,priority:Number(projPriority.value||3)})}); logEvent('kai', `Project added: ${projName.value}`); projName.value=''; await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
-delProjs.onclick = async () => { if(!selected.projects.size) return alert('Select project rows first'); if(!confirm('Delete selected projects? (linked tasks may be removed)')) return; try{ await j('/api/projects/delete',{method:'POST',body:JSON.stringify({ids:[...selected.projects]})}); logEvent('kai', `Deleted ${selected.projects.size} projects`); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+addProj.onclick = async () => { try{ await j('/api/projects/add',{method:'POST',body:JSON.stringify({name:projName.value,category_id:projCategory.value||null,status:projStatus.value,priority:Number(projPriority.value||3)})}); projName.value=''; await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+delProjs.onclick = async () => { if(!selected.projects.size) return alert('Select project rows first'); if(!confirm('Delete selected projects? (linked tasks may be removed)')) return; try{ await j('/api/projects/delete',{method:'POST',body:JSON.stringify({ids:[...selected.projects]})}); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
 
-addTask.onclick = async () => { try{ const agent = agentKeyFromAssignee(taskAssignee.value); await j('/api/tasks/add',{method:'POST',body:JSON.stringify({title:taskTitle.value,project_id:taskProject.value,status:taskStatus.value,assignee:taskAssignee.value})}); logEvent(agent, `Task added: ${taskTitle.value}`); taskTitle.value=''; taskAssignee.value=''; await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
-delTasks.onclick = async () => { if(!selected.tasks.size) return alert('Select task rows first'); if(!confirm('Delete selected tasks?')) return; try{ await j('/api/tasks/delete',{method:'POST',body:JSON.stringify({ids:[...selected.tasks]})}); logEvent('david', `Deleted ${selected.tasks.size} tasks`); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+addTask.onclick = async () => { try{ await j('/api/tasks/add',{method:'POST',body:JSON.stringify({title:taskTitle.value,project_id:taskProject.value,status:taskStatus.value,assignee:taskAssignee.value})}); taskTitle.value=''; taskAssignee.value=''; await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
+delTasks.onclick = async () => { if(!selected.tasks.size) return alert('Select task rows first'); if(!confirm('Delete selected tasks?')) return; try{ await j('/api/tasks/delete',{method:'POST',body:JSON.stringify({ids:[...selected.tasks]})}); await load(); }catch(e){ logEvent('error', e.message); alert(e.message);} };
 
 async function approveTask(taskId, targetStatus){
   try{
@@ -524,9 +528,11 @@ if(themeBtn){
   });
 }
 
-logEvent('system','Activity chat initialized.');
 load().catch(e => logEvent('error', e.message));
-setInterval(() => load().catch(e => logEvent('error', e.message)), 1000);
+setInterval(() => {
+  if (document.hidden) return;
+  load().catch(e => logEvent('error', e.message));
+}, 5000);
 </script>
 </body>
 </html>

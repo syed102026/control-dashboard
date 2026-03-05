@@ -15,11 +15,17 @@ STATUS_ALIASES = {
     'complete': 'completed',
     'working': 'in_progress',
 }
+ALLOWED_STATUS = {'plan', 'in_progress', 'review', 'approval_required', 'completed', 'blocked'}
 
 
 def normalize_status(value: str, default: str = 'plan') -> str:
     raw = (value or default).strip().lower()
     return STATUS_ALIASES.get(raw, raw)
+
+
+def valid_status(value: str, default: str = 'plan') -> str:
+    s = normalize_status(value, default)
+    return s if s in ALLOWED_STATUS else default
 
 
 def get_conn():
@@ -54,11 +60,36 @@ def ensure_log_db():
 
 
 def add_log(agent: str, message: str, level: str = 'info', meta=None):
+    msg = (message or '').strip()
+    if not msg:
+        return
     conn = get_log_conn()
     try:
+        # local dedupe window: skip exact same log from same agent/level in last 2 seconds
+        row = conn.execute(
+            """
+            SELECT id FROM work_logs
+            WHERE agent=? AND level=? AND message=?
+              AND ts >= datetime('now', '-2 seconds')
+            ORDER BY id DESC LIMIT 1
+            """,
+            ((agent or 'system').strip().lower(), (level or 'info').strip().lower(), msg),
+        ).fetchone()
+        if row:
+            return
+
         conn.execute(
             'INSERT INTO work_logs (agent, level, message, meta_json) VALUES (?, ?, ?, ?)',
-            (agent or 'system', level or 'info', message, json.dumps(meta) if meta is not None else None),
+            ((agent or 'system').strip().lower(), (level or 'info').strip().lower(), msg, json.dumps(meta) if meta is not None else None),
+        )
+        # retention cap for local use
+        conn.execute(
+            """
+            DELETE FROM work_logs
+            WHERE id NOT IN (
+              SELECT id FROM work_logs ORDER BY id DESC LIMIT 2000
+            )
+            """
         )
         conn.commit()
     finally:
@@ -105,27 +136,40 @@ class H(BaseHTTPRequestHandler):
         if p == '/api/categories':
             return self._json(q('select id,name,description,created_at,updated_at from categories order by id'))
         if p == '/api/projects':
-            return self._json(q('''
+            qs = parse_qs(u.query or '')
+            limit = max(1, min(1000, int((qs.get('limit') or ['1000'])[0])))
+            offset = max(0, int((qs.get('offset') or ['0'])[0]))
+            rows = q('''
                 select p.id,p.name,p.status,p.priority,p.category_id,c.name as category_name,p.created_at,p.updated_at
-                from projects p left join categories c on c.id=p.category_id order by p.id
-            '''))
+                from projects p left join categories c on c.id=p.category_id
+                order by p.id limit ? offset ?
+            ''', (limit, offset))
+            for r in rows:
+                r['status'] = valid_status(r.get('status') or 'plan')
+            return self._json(rows)
         if p == '/api/tasks':
+            qs = parse_qs(u.query or '')
+            limit = max(1, min(5000, int((qs.get('limit') or ['2000'])[0])))
+            offset = max(0, int((qs.get('offset') or ['0'])[0]))
             rows = q('''
                 select t.id,t.title,t.description,t.status,t.assignee,t.due_at,t.project_id,p.name as project_name,t.created_at,t.updated_at
-                from tasks t left join projects p on p.id=t.project_id order by t.id
-            ''')
+                from tasks t left join projects p on p.id=t.project_id
+                order by t.id limit ? offset ?
+            ''', (limit, offset))
             for r in rows:
-                r['status'] = normalize_status(r.get('status') or 'plan')
+                r['status'] = valid_status(r.get('status') or 'plan')
             return self._json(rows)
         if p == '/api/logs':
             qs = parse_qs(u.query or '')
             limit = int((qs.get('limit') or ['150'])[0])
+            offset = int((qs.get('offset') or ['0'])[0])
             limit = max(1, min(1000, limit))
+            offset = max(0, offset)
             conn = get_log_conn()
             try:
                 cur = conn.execute(
-                    'SELECT id, ts, agent, level, message, meta_json FROM work_logs ORDER BY id DESC LIMIT ?',
-                    (limit,),
+                    'SELECT id, ts, agent, level, message, meta_json FROM work_logs ORDER BY id DESC LIMIT ? OFFSET ?',
+                    (limit, offset),
                 )
                 return self._json([dict(r) for r in cur.fetchall()])
             finally:
@@ -179,7 +223,7 @@ class H(BaseHTTPRequestHandler):
                     return self._json({'error': 'name required'}, 400)
                 category_id = body.get('category_id')
                 category_id = int(category_id) if category_id not in (None, '', 'null') else None
-                status = normalize_status(body.get('status') or 'plan')
+                status = valid_status(body.get('status') or 'plan')
                 priority = int(body.get('priority') or 3)
                 conn.execute(
                     'insert into projects (name, category_id, status, priority) values (?, ?, ?, ?)',
@@ -204,7 +248,7 @@ class H(BaseHTTPRequestHandler):
                 if not title or project_id in (None, ''):
                     return self._json({'error': 'title and project_id required'}, 400)
                 project_id = int(project_id)
-                status = normalize_status(body.get('status') or 'plan')
+                status = valid_status(body.get('status') or 'plan')
                 assignee = (body.get('assignee') or '').strip() or None
                 description = (body.get('description') or '').strip() or None
                 due_at = (body.get('due_at') or '').strip() or None
@@ -227,9 +271,8 @@ class H(BaseHTTPRequestHandler):
 
             if p == '/api/tasks/update-status':
                 task_id = body.get('task_id')
-                status = normalize_status(body.get('status') or '')
-                allowed = {'plan', 'in_progress', 'review', 'approval_required', 'completed', 'blocked'}
-                if task_id in (None, '') or status not in allowed:
+                status = valid_status(body.get('status') or '', default='')
+                if task_id in (None, '') or status not in ALLOWED_STATUS:
                     return self._json({'error': 'task_id and valid status required'}, 400)
                 task_row = conn.execute('select id,title,status,assignee from tasks where id=?', (int(task_id),)).fetchone()
                 if not task_row:
