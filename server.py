@@ -260,7 +260,7 @@ class H(BaseHTTPRequestHandler):
             limit = max(1, min(5000, int((qs.get('limit') or ['2000'])[0])))
             offset = max(0, int((qs.get('offset') or ['0'])[0]))
             rows = q('''
-                select t.id,t.title,t.description,t.status,t.assignee,t.due_at,t.project_id,p.name as project_name,t.created_at,t.updated_at
+                select t.id,t.title,t.description,t.status,t.assignee,t.team,t.phase,t.acceptance_criteria,t.evidence_link,t.due_at,t.project_id,p.name as project_name,t.created_at,t.updated_at
                 from tasks t left join projects p on p.id=t.project_id
                 order by t.id limit ? offset ?
             ''', (limit, offset))
@@ -438,10 +438,14 @@ class H(BaseHTTPRequestHandler):
                 status = valid_status(body.get('status') or 'plan')
                 assignee = (body.get('assignee') or '').strip() or None
                 description = (body.get('description') or '').strip() or None
+                team = (body.get('team') or 'saas').strip().lower()
+                phase = (body.get('phase') or 'development').strip().lower()
+                acceptance_criteria = (body.get('acceptance_criteria') or '').strip() or None
+                evidence_link = (body.get('evidence_link') or '').strip() or None
                 due_at = (body.get('due_at') or '').strip() or None
                 conn.execute(
-                    'insert into tasks (project_id, title, description, status, assignee, due_at) values (?, ?, ?, ?, ?, ?)',
-                    (project_id, title, description, status, assignee, due_at),
+                    'insert into tasks (project_id, title, description, status, assignee, team, phase, acceptance_criteria, evidence_link, due_at) values (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    (project_id, title, description, status, assignee, team, phase, acceptance_criteria, evidence_link, due_at),
                 )
                 conn.commit()
                 add_log((assignee or 'david').lower(), f'Task added: {title}')
@@ -508,6 +512,24 @@ class H(BaseHTTPRequestHandler):
                 add_log('david', f'Restored {restored} deleted task(s)')
                 bump_event_seq()
                 return self._json({'ok': True, 'restored': restored})
+
+            if p == '/api/tasks/update-meta':
+                task_id = body.get('task_id')
+                if task_id in (None, ''):
+                    return self._json({'error': 'task_id required'}, 400)
+                team = (body.get('team') or '').strip().lower() or None
+                phase = (body.get('phase') or '').strip().lower() or None
+                acceptance_criteria = (body.get('acceptance_criteria') or '').strip() or None
+                evidence_link = (body.get('evidence_link') or '').strip() or None
+                row = conn.execute('select id,title from tasks where id=?', (int(task_id),)).fetchone()
+                if not row:
+                    return self._json({'error': 'task not found'}, 404)
+                conn.execute('update tasks set team=coalesce(?,team), phase=coalesce(?,phase), acceptance_criteria=coalesce(?,acceptance_criteria), evidence_link=coalesce(?,evidence_link) where id=?',
+                             (team, phase, acceptance_criteria, evidence_link, int(task_id)))
+                conn.commit()
+                add_log('system', f"Task metadata updated: {row['title']}")
+                bump_event_seq()
+                return self._json({'ok': True})
 
             if p == '/api/tasks/update-status':
                 task_id = body.get('task_id')
