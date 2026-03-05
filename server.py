@@ -102,6 +102,14 @@ def ensure_log_db():
                 meta_json TEXT
             )
         ''')
+        conn.execute('''
+            CREATE TABLE IF NOT EXISTS runtime_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+            )
+        ''')
+        conn.execute("INSERT OR IGNORE INTO runtime_state(key, value) VALUES('flow_state','stopped')")
         conn.commit()
     finally:
         conn.close()
@@ -147,6 +155,27 @@ def q(sql, params=()):
     try:
         cur = conn.execute(sql, params)
         return [dict(r) for r in cur.fetchall()]
+    finally:
+        conn.close()
+
+
+def get_flow_state() -> str:
+    conn = get_log_conn()
+    try:
+        row = conn.execute("SELECT value FROM runtime_state WHERE key='flow_state'").fetchone()
+        return (row['value'] if row else 'stopped')
+    finally:
+        conn.close()
+
+
+def set_flow_state(value: str):
+    conn = get_log_conn()
+    try:
+        conn.execute(
+            "UPDATE runtime_state SET value=?, updated_at=datetime('now') WHERE key='flow_state'",
+            (value,),
+        )
+        conn.commit()
     finally:
         conn.close()
 
@@ -198,6 +227,9 @@ class H(BaseHTTPRequestHandler):
                     time.sleep(2)
             except Exception:
                 return
+
+        if p == '/api/flow/status':
+            return self._json({'state': get_flow_state()})
 
         if p == '/api/overview':
             total_tasks = q('select count(*) as c from tasks')[0]['c']
@@ -279,6 +311,35 @@ class H(BaseHTTPRequestHandler):
                 )
                 bump_event_seq()
                 return self._json({'ok': True})
+
+            if p == '/api/flow/start':
+                set_flow_state('running')
+                has_running = conn.execute("SELECT id FROM tasks WHERE lower(status)='in_progress' LIMIT 1").fetchone()
+                promoted_task = None
+                if not has_running:
+                    next_task = conn.execute("SELECT id,title,assignee FROM tasks WHERE lower(status)='plan' ORDER BY id LIMIT 1").fetchone()
+                    if next_task:
+                        conn.execute("UPDATE tasks SET status='in_progress' WHERE id=?", (next_task['id'],))
+                        promoted_task = {'id': next_task['id'], 'title': next_task['title']}
+                conn.commit()
+                note = ''
+                if promoted_task:
+                    note = f" · Task #{promoted_task['id']} moved to in_progress"
+                add_log('system', f"Flow started{note}")
+                bump_event_seq()
+                return self._json({'ok': True, 'state': 'running', 'promoted_task': promoted_task})
+
+            if p == '/api/flow/pause':
+                set_flow_state('paused')
+                add_log('system', 'Flow paused')
+                bump_event_seq()
+                return self._json({'ok': True, 'state': 'paused'})
+
+            if p == '/api/flow/stop':
+                set_flow_state('stopped')
+                add_log('system', 'Flow stopped')
+                bump_event_seq()
+                return self._json({'ok': True, 'state': 'stopped'})
 
             if p == '/api/backup/create':
                 out = create_backup()

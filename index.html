@@ -126,6 +126,10 @@
       <div class="sub">Synced with dev.db</div>
     </div>
     <div style="display:flex; align-items:center; gap:8px;">
+      <button id="flowStart" title="Start workflow">Start</button>
+      <button id="flowPause" title="Pause workflow">Pause</button>
+      <button id="flowStop" title="Stop workflow">Stop</button>
+      <span id="flowState" class="status-pill">flow: stopped</span>
       <button id="backupNow" title="Create DB backup">Backup now</button>
       <button id="restoreTask" title="Restore latest deleted task">Restore task</button>
       <button id="restoreProject" title="Restore latest deleted project">Restore project</button>
@@ -266,6 +270,15 @@ async function loadLogs(){
     return { agent:style, message:r.message, ts };
   });
   renderFeed();
+}
+
+async function loadFlowState(){
+  try {
+    const d = await j('/api/flow/status');
+    const v = (d.state || 'stopped').toLowerCase();
+    flowState.textContent = `flow: ${v}`;
+    flowState.className = 'status-pill ' + (v === 'running' ? 'david' : (v === 'paused' ? 'kai' : ''));
+  } catch(_) {}
 }
 
 async function j(url, opt={}){ const r = await fetch(url, {headers:{'Content-Type':'application/json'}, ...opt}); const d = await r.json(); if(!r.ok) throw new Error(d.error || ('HTTP '+r.status)); return d; }
@@ -454,7 +467,7 @@ async function load(){
   state.loading = true;
   try {
     const [overview,categoriesData,projectsData,tasksData] = await Promise.all([ j('/api/overview'), j('/api/categories'), j('/api/projects'), j('/api/tasks') ]);
-    await loadLogs();
+    await Promise.all([loadLogs(), loadFlowState()]);
   kTotalTasks.textContent = overview.total_tasks;
   kCompletePct.textContent = overview.complete_percentage + '%';
   kPendingApproval.textContent = overview.pending_approval;
@@ -504,6 +517,19 @@ async function approveTask(taskId, targetStatus){
   }
 }
 window.approveTask = approveTask;
+
+flowStart.onclick = async () => {
+  try { await j('/api/flow/start', { method:'POST', body: JSON.stringify({}) }); await load(); }
+  catch (e) { alert(e.message || 'Flow start failed'); }
+};
+flowPause.onclick = async () => {
+  try { await j('/api/flow/pause', { method:'POST', body: JSON.stringify({}) }); await loadFlowState(); await loadLogs(); }
+  catch (e) { alert(e.message || 'Flow pause failed'); }
+};
+flowStop.onclick = async () => {
+  try { await j('/api/flow/stop', { method:'POST', body: JSON.stringify({}) }); await loadFlowState(); await loadLogs(); }
+  catch (e) { alert(e.message || 'Flow stop failed'); }
+};
 
 backupNow.onclick = async () => {
   try {
