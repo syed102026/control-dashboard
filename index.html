@@ -528,7 +528,8 @@ function renderAgentsStatus(){
         const status = inProgress > 0 ? 'working' : (review > 0 || pending > 0 ? 'active' : 'idle');
         const cls = n==='Aran' ? 'aran' : n==='David' ? 'david' : n==='Kai' ? 'kai' : 'system';
         const av = (AGENT_PROFILE[n]?.avatar) || n.slice(0,1);
-        return `<div class="agent-row"><span style="display:flex;align-items:center"><span class="avatar ${cls}">${av}</span>${n}</span><span class="status-pill ${cls}">${status}${inProgress?` · ${inProgress}`:''}</span></div>`;
+        const role = (AGENT_PROFILE[n]?.role) || 'Agent';
+        return `<div class="agent-row"><span style="display:flex;align-items:center"><span class="avatar ${cls}">${av}</span><span><div>${n}</div><div class="muted" style="font-size:10px;line-height:1.1">${role}</div></span></span><span class="status-pill ${cls}">${status}${inProgress?` · ${inProgress}`:''}</span></div>`;
       }).join('')}
     </div>
   `).join('');
