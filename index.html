@@ -102,10 +102,8 @@
     .status-pill.aran { background:color-mix(in oklab, var(--agent-aran) 20%, var(--card)); color:var(--agent-aran); }
     .status-pill.david { background:color-mix(in oklab, var(--agent-david) 20%, var(--card)); color:#365314; }
     .status-pill.kai { background:color-mix(in oklab, var(--agent-kai) 20%, var(--card)); color:#9a3412; }
-    .avatar { width:22px; height:22px; border-radius:999px; display:inline-flex; align-items:center; justify-content:center; color:#fff; font-size:11px; font-weight:700; margin-right:7px; }
-    .avatar.aran { background:var(--agent-aran); }
-    .avatar.david { background:var(--agent-david); color:#1f2937; }
-    .avatar.kai { background:var(--agent-kai); }
+    .avatar { width:24px; height:24px; border-radius:999px; display:inline-block; margin-right:7px; border:1px solid var(--line); object-fit:cover; background:#fff; }
+    .avatar.lg { width:28px; height:28px; margin-right:8px; }
 
     @media (max-width: 1200px) {
       .wrap { grid-template-columns:180px minmax(0,1fr); }
@@ -271,18 +269,19 @@ const AGENT_STYLE = {
   error:{cls:'error', icon:'⚠️', name:'Error'}
 };
 
+const AV = (seed) => `https://api.dicebear.com/9.x/shapes/svg?seed=${encodeURIComponent(seed)}&radius=50&backgroundType=gradientLinear`;
 const AGENT_PROFILE = {
-  Atlas:{team:'Atlas', role:'Central Orchestrator / CEO', avatar:'🧭'},
-  Aran:{team:'SaaS Team', role:'Architect', avatar:'🧠'},
-  David:{team:'SaaS Team', role:'Developer', avatar:'🛠️'},
-  Quinn:{team:'SaaS Team', role:'QA Engineer', avatar:'✅'},
-  Kai:{team:'SaaS Team', role:'Deployment / Infra', avatar:'🚀'},
-  Jerry:{team:'Research Team', role:'Research Lead', avatar:'📚'},
-  Nikola:{team:'Research Team', role:'Theory Analyst', avatar:'🧪'},
-  Albert:{team:'Research Team', role:'Experiments', avatar:'🔬'},
-  Warren:{team:'Business Team', role:'Strategy', avatar:'📈'},
-  Steve:{team:'Business Team', role:'Product', avatar:'🧩'},
-  Philip:{team:'Business Team', role:'Growth', avatar:'📣'}
+  Atlas:{team:'Atlas', role:'Central Orchestrator / CEO', avatarUrl:AV('Atlas')},
+  Aran:{team:'SaaS Team', role:'Architect', avatarUrl:AV('Aran')},
+  David:{team:'SaaS Team', role:'Developer', avatarUrl:AV('David')},
+  Quinn:{team:'SaaS Team', role:'QA Engineer', avatarUrl:AV('Quinn')},
+  Kai:{team:'SaaS Team', role:'Deployment / Infra', avatarUrl:AV('Kai')},
+  Jerry:{team:'Research Team', role:'Research Lead', avatarUrl:AV('Jerry')},
+  Nikola:{team:'Research Team', role:'Theory Analyst', avatarUrl:AV('Nikola')},
+  Albert:{team:'Research Team', role:'Experiments', avatarUrl:AV('Albert')},
+  Warren:{team:'Business Team', role:'Strategy', avatarUrl:AV('Warren')},
+  Steve:{team:'Business Team', role:'Product', avatarUrl:AV('Steve')},
+  Philip:{team:'Business Team', role:'Growth', avatarUrl:AV('Philip')}
 };
 
 function agentKeyFromAssignee(a){
@@ -427,7 +426,7 @@ function renderAgentsCrm(){
         ${list.map(a => `
           <div class="agent-row" style="display:block;">
             <div style="display:flex;align-items:center;gap:8px;">
-              <span class="avatar ${a.agent==='Aran'?'aran':a.agent==='David'?'david':a.agent==='Kai'?'kai':'system'}" style="width:28px;height:28px;font-size:14px;">${a.avatar}</span>
+              <img class="avatar lg" src="${esc(AGENT_PROFILE[a.agent]?.avatarUrl || AV(a.agent))}" alt="${esc(a.agent)} avatar" />
               <div>
                 <div style="font-weight:600;">${esc(a.agent)}</div>
                 <div class="muted" style="font-size:11px;">${esc(a.role)}</div>
@@ -528,9 +527,9 @@ function renderAgentsStatus(){
         const pending = list.filter(t => (t.status||'').toLowerCase()==='approval_required').length;
         const status = inProgress > 0 ? 'working' : (review > 0 || pending > 0 ? 'active' : 'idle');
         const cls = n==='Aran' ? 'aran' : n==='David' ? 'david' : n==='Kai' ? 'kai' : 'system';
-        const av = (AGENT_PROFILE[n]?.avatar) || n.slice(0,1);
         const role = (AGENT_PROFILE[n]?.role) || 'Agent';
-        return `<div class="agent-row"><span style="display:flex;align-items:center"><span class="avatar ${cls}">${av}</span><span><div>${n}</div><div class="muted" style="font-size:10px;line-height:1.1">${role}</div></span></span><span class="status-pill ${cls}">${status}${inProgress?` · ${inProgress}`:''}</span></div>`;
+        const avatarUrl = AGENT_PROFILE[n]?.avatarUrl || AV(n);
+        return `<div class="agent-row"><span style="display:flex;align-items:center"><img class="avatar" src="${esc(avatarUrl)}" alt="${esc(n)} avatar" /><span><div>${n}</div><div class="muted" style="font-size:10px;line-height:1.1">${role}</div></span></span><span class="status-pill ${cls}">${status}${inProgress?` · ${inProgress}`:''}</span></div>`;
       }).join('')}
     </div>
   `).join('');
